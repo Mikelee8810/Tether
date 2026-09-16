@@ -79,19 +79,31 @@ fun DashboardScreen(vm: RadarViewModel, onOpenPerson: (Long) -> Unit, onOpenNewP
     ) {
         item(span = { GridItemSpan(4) }) {
             Column(Modifier.padding(horizontal = Radar.sp2.dp)) {
-                AnimatedContent(
-                    attention.size, label = "count",
-                    transitionSpec = { (slideInVertically { it / 2 } + fadeIn()) togetherWith (slideOutVertically { -it / 2 } + fadeOut()) },
-                ) { n -> Text(if (radar.isEmpty()) "Hi" else if (n == 0) "All good" else "$n", style = MaterialTheme.typography.displayLarge) }
-                Text(
-                    when {
-                        radar.isEmpty() -> "Add someone, or import your contacts in Settings."
-                        attention.isEmpty() -> "Nobody needs a nudge right now."
-                        attention.size == 1 -> "person to reach out to"
-                        else -> "people to reach out to"
-                    },
-                    style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Spacer(Modifier.height(Radar.sp2.dp))
+                // Encouraging, non-guilt header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(
+                            when {
+                                radar.isEmpty() -> "Welcome"
+                                attention.isEmpty() -> "All caught up ✨"
+                                attention.size == 1 -> "1 person to reach out to"
+                                else -> "${attention.size} people to reach out to"
+                            },
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Text(
+                            if (attention.isEmpty()) "Your connections are glowing and healthy." else "Gentle nudges to keep your bonds strong.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(Radar.sp3.dp))
                 if (uncategorized.isNotEmpty() || pending.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Radar.sp2.dp)) {
@@ -108,7 +120,7 @@ fun DashboardScreen(vm: RadarViewModel, onOpenPerson: (Long) -> Unit, onOpenNewP
                         ) { Text(f.label) }
                     }
                 }
-                Spacer(Modifier.height(Radar.sp2.dp))
+                Spacer(Modifier.height(Radar.sp3.dp))
             }
         }
 
@@ -131,18 +143,50 @@ private fun FaceTile(r: PersonRadar, modifier: Modifier = Modifier, onClick: () 
     val big = tileSpan(r) == 2
     BoxWithConstraints(modifier.clickable(onClick = onClick)) {
         val side = maxWidth
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Face(r.person.id, r.person.displayName, r.status, r.person.avatar, r.person.contactLookupKey, size = side.value.toInt(), hiRes = big)
-            Spacer(Modifier.height(6.dp))
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(vertical = 4.dp),
+        ) {
+            Face(
+                r.person.id,
+                r.person.displayName,
+                r.status,
+                r.person.avatar,
+                r.person.contactLookupKey,
+                size = if (big) (side.value * 0.85f).toInt() else side.value.toInt(),
+                hiRes = big,
+            )
+            Spacer(Modifier.height(8.dp))
             Text(
                 r.person.displayName.substringBefore(' '),
                 style = if (big) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleSmall,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
             )
-            if (r.status != RadarStatus.TRACK_ONLY) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Box(Modifier.size(7.dp).background(StatusColors.accent(r.status), CircleShape))
-                Text(Format.ago(r.lastEffortAt), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            } else Text(Format.ago(r.lastEffortAt), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            if (r.status != RadarStatus.TRACK_ONLY) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Box(Modifier.size(6.dp).background(StatusColors.accent(r.status), CircleShape))
+                    Text(
+                        Format.ago(r.lastEffortAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            } else {
+                Text(
+                    Format.ago(r.lastEffortAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
             Spacer(Modifier.height(Radar.sp2.dp))
         }
     }

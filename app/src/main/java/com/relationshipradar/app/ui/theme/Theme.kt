@@ -46,44 +46,53 @@ object Radar {
     val cardRadius = 28.dp
 }
 
-/** Status is expressed through scheme roles so it re-tints with the wallpaper. */
+/** Warm, alive status palette that feels encouraging rather than depressing. */
 object StatusColors {
+    // Curated warm accents so it never looks drab or clinical
+    val Emerald = Color(0xFF10B981)       // Healthy, connected (Warm Emerald)
+    val Amber = Color(0xFFF59E0B)         // Due soon, gentle nudge (Warm Amber)
+    val Coral = Color(0xFFF43F5E)         // Needs love / overdue (Soft Vibrant Coral)
+    val Slate = Color(0xFF64748B)         // Calm neutral (Gentle Slate)
+
+    val EmeraldBg = Color(0x1F10B981)
+    val AmberBg = Color(0x1FF59E0B)
+    val CoralBg = Color(0x1FF43F5E)
+    val SlateBg = Color(0x1464748B)
+
     @Composable fun container(status: RadarStatus): Color = when (status) {
-        RadarStatus.GOOD -> MaterialTheme.colorScheme.primaryContainer
-        RadarStatus.DUE_SOON -> MaterialTheme.colorScheme.tertiaryContainer
-        RadarStatus.OVERDUE -> MaterialTheme.colorScheme.errorContainer
-        RadarStatus.VERY_OVERDUE -> MaterialTheme.colorScheme.errorContainer
-        RadarStatus.TRACK_ONLY, RadarStatus.PAUSED, RadarStatus.SNOOZED -> MaterialTheme.colorScheme.surfaceContainerHighest
+        RadarStatus.GOOD -> EmeraldBg
+        RadarStatus.DUE_SOON -> AmberBg
+        RadarStatus.OVERDUE, RadarStatus.VERY_OVERDUE -> CoralBg
+        RadarStatus.TRACK_ONLY, RadarStatus.PAUSED, RadarStatus.SNOOZED -> SlateBg
     }
 
     @Composable fun onContainer(status: RadarStatus): Color = when (status) {
-        RadarStatus.GOOD -> MaterialTheme.colorScheme.onPrimaryContainer
-        RadarStatus.DUE_SOON -> MaterialTheme.colorScheme.onTertiaryContainer
-        RadarStatus.OVERDUE -> MaterialTheme.colorScheme.onErrorContainer
-        RadarStatus.VERY_OVERDUE -> MaterialTheme.colorScheme.onErrorContainer
+        RadarStatus.GOOD -> Emerald
+        RadarStatus.DUE_SOON -> Amber
+        RadarStatus.OVERDUE, RadarStatus.VERY_OVERDUE -> Coral
         RadarStatus.TRACK_ONLY, RadarStatus.PAUSED, RadarStatus.SNOOZED -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    /** Solid accent for dots and rings. */
+    /** Solid accent for dots, rings, and badges. */
     @Composable fun accent(status: RadarStatus): Color = when (status) {
-        RadarStatus.GOOD -> MaterialTheme.colorScheme.primary
-        RadarStatus.DUE_SOON -> MaterialTheme.colorScheme.tertiary
-        RadarStatus.OVERDUE, RadarStatus.VERY_OVERDUE -> MaterialTheme.colorScheme.error
-        RadarStatus.TRACK_ONLY, RadarStatus.PAUSED, RadarStatus.SNOOZED -> MaterialTheme.colorScheme.outline
+        RadarStatus.GOOD -> Emerald
+        RadarStatus.DUE_SOON -> Amber
+        RadarStatus.OVERDUE, RadarStatus.VERY_OVERDUE -> Coral
+        RadarStatus.TRACK_ONLY, RadarStatus.PAUSED, RadarStatus.SNOOZED -> Slate
     }
 
     @Composable fun of(level: Health.Level): Color = when (level) {
-        Health.Level.OK -> MaterialTheme.colorScheme.primary
-        Health.Level.ATTENTION -> MaterialTheme.colorScheme.tertiary
-        Health.Level.OFF -> MaterialTheme.colorScheme.error
+        Health.Level.OK -> Emerald
+        Health.Level.ATTENTION -> Amber
+        Health.Level.OFF -> Coral
     }
 
     fun label(status: RadarStatus): String = when (status) {
-        RadarStatus.GOOD -> "On track"
-        RadarStatus.DUE_SOON -> "Due soon"
-        RadarStatus.OVERDUE -> "Overdue"
-        RadarStatus.VERY_OVERDUE -> "Way overdue"
-        RadarStatus.TRACK_ONLY -> "No reminders"
+        RadarStatus.GOOD -> "In touch"
+        RadarStatus.DUE_SOON -> "Nudge soon"
+        RadarStatus.OVERDUE -> "Catch up"
+        RadarStatus.VERY_OVERDUE -> "Reach out"
+        RadarStatus.TRACK_ONLY -> "Quiet radar"
         RadarStatus.PAUSED -> "Paused"
         RadarStatus.SNOOZED -> "Snoozed"
     }

@@ -14,6 +14,11 @@ object MessagingApps {
         "com.microsoft.teams" to "Teams",
         "com.google.android.apps.messaging" to "Google Messages",
         "com.snapchat.android" to "Snapchat",
+        "com.google.android.gm" to "Gmail",
+        "com.microsoft.office.outlook" to "Outlook",
+        "com.yahoo.mobile.client.android.mail" to "Yahoo Mail",
+        "com.twitter.android" to "X",
+        "com.linkedin.android" to "LinkedIn",
     )
 
     fun label(pkg: String) = known[pkg] ?: pkg.substringAfterLast('.')

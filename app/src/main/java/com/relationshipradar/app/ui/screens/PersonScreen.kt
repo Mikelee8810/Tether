@@ -96,11 +96,21 @@ fun PersonScreen(vm: RadarViewModel, personId: Long, onLog: () -> Unit, onBack: 
                 Column(Modifier.fillMaxWidth().padding(horizontal = Radar.sp4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     val frac = if (radar.intervalDays == null || radar.daysSinceEffort == null) 0f else (radar.daysSinceEffort!!.toFloat() / radar.intervalDays!!).coerceIn(0f, 1f)
                     Box(contentAlignment = Alignment.Center) {
-                        if (radar.status != RadarStatus.TRACK_ONLY) CircularWavyProgressIndicator(
-                            progress = { frac }, modifier = Modifier.size(156.dp),
-                            color = StatusColors.accent(radar.status), trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        if (radar.status != RadarStatus.TRACK_ONLY) androidx.compose.material3.CircularProgressIndicator(
+                            progress = { frac },
+                            modifier = Modifier.size(140.dp),
+                            color = StatusColors.accent(radar.status),
+                            trackColor = StatusColors.container(radar.status),
+                            strokeWidth = 6.dp,
+                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
                         )
-                        Face(person.id, person.displayName, radar.status, person.avatar, person.contactLookupKey, size = 120, modifier = Modifier.clickable { dialog = "avatar" }, hiRes = true)
+                        Face(
+                            person.id, person.displayName, radar.status, person.avatar, person.contactLookupKey,
+                            size = 114,
+                            modifier = Modifier.clickable { dialog = "avatar" },
+                            hiRes = true,
+                            showRing = false,
+                        )
                     }
                     Spacer(Modifier.height(6.dp))
                     TextButton(onClick = { dialog = "avatar" }) { Text("Change face") }

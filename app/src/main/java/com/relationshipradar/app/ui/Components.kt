@@ -72,77 +72,99 @@ object PersonShapes {
     }
 }
 
+// ---- Clean, warm, human avatar presentation -----------------------------------------------
+
 /**
- * A person's face. Photo if they have one, else their chosen 3D avatar, else initials — always
- * clipped to their expressive shape, which morphs angular as they go overdue. Overdue photos
- * lose saturation so the list reads at a glance even without colour.
+ * A person's face. Full natural color, crisp circular shape, with an elegant glowing status ring.
+ * Never depressing, never greyed out, and never clipped into jagged shapes.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun Face(id: Long, name: String, status: RadarStatus, avatar: String?, lookupKey: String?, size: Int = 56, modifier: Modifier = Modifier, hiRes: Boolean = size >= 96) {
-    val base = remember(id) { PersonShapes.forId(id) }
-    val morph = remember(base) { Morph(base, PersonShapes.cold) }
-    val progress by animateFloatAsState(PersonShapes.stress(status), label = "shape")
-    val shape = remember(progress) { MorphShape(morph, progress) }
+fun Face(
+    id: Long,
+    name: String,
+    status: RadarStatus,
+    avatar: String?,
+    lookupKey: String?,
+    size: Int = 56,
+    modifier: Modifier = Modifier,
+    hiRes: Boolean = size >= 96,
+    showRing: Boolean = true,
+) {
     val photo = if (avatar == "photo") ContactPhotos.remember(lookupKey, hiRes) else null
     val bundled = BundledAvatars.parse(avatar)
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val sat by animateFloatAsState(1f - 0.8f * PersonShapes.stress(status), label = "sat")
+    val accentColor = StatusColors.accent(status)
+    val ringPadding = if (showRing && status != RadarStatus.TRACK_ONLY) 3.dp else 0.dp
 
-    if (photo != null) {
-        androidx.compose.foundation.Image(
-            photo, contentDescription = name,
-            modifier = modifier.size(size.dp).clip(shape),
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-            colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(sat) }),
-        )
-    } else if (bundled != null) {
-        Box(modifier.size(size.dp).clip(shape).background(StatusColors.container(status)), contentAlignment = Alignment.Center) {
-            androidx.compose.foundation.Image(
-                androidx.compose.ui.res.painterResource(BundledAvatars.resId(ctx, bundled)), contentDescription = name,
-                modifier = Modifier.size((size * 0.72f).dp),
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(sat) }),
+    Box(
+        modifier = modifier.size(size.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Subtle outer status ring that stays warm and alive
+        if (showRing && status != RadarStatus.TRACK_ONLY) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.25f))
             )
         }
-    } else {
-        Avatar(id, name, status, size, modifier)
-    }
-}
 
-/** A Compose Shape backed by a Morph at a fixed progress. */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-class MorphShape(private val morph: Morph, private val progress: Float) : androidx.compose.ui.graphics.Shape {
-    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: androidx.compose.ui.unit.Density): androidx.compose.ui.graphics.Outline {
-        val p = Path()
-        morph.toPath(progress, p)
-        val m = Matrix(); m.scale(size.width, size.height); p.transform(m)
-        return androidx.compose.ui.graphics.Outline.Generic(p)
-    }
-}
-
-/** Initials inside a morphing Material shape. Colour and shape both carry the status. */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun Avatar(id: Long, name: String, status: RadarStatus, size: Int = 56, modifier: Modifier = Modifier) {
-    val initials = name.split(' ', '-').filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercaseChar().toString() }.ifEmpty { "?" }
-    val base = remember(id) { PersonShapes.forId(id) }
-    val morph = remember(base) { Morph(base, PersonShapes.cold) }
-    val target = PersonShapes.stress(status)
-    val progress by animateFloatAsState(target, label = "shape")
-    val fill by animateColorAsState(StatusColors.container(status), label = "fill")
-    val ink = StatusColors.onContainer(status)
-    val path = remember { Path() }
-    val matrix = remember { Matrix() }
-
-    Box(modifier.size(size.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            morph.toPath(progress, path)
-            matrix.reset()
-            matrix.scale(this.size.width, this.size.height)
-            path.transform(matrix)
-            drawPath(path, fill)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(ringPadding)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (photo != null) {
+                androidx.compose.foundation.Image(
+                    photo,
+                    contentDescription = name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            } else if (bundled != null) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(StatusColors.container(status)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.foundation.Image(
+                        androidx.compose.ui.res.painterResource(BundledAvatars.resId(ctx, bundled)),
+                        contentDescription = name,
+                        modifier = Modifier.size((size * 0.72f).dp),
+                    )
+                }
+            } else {
+                Avatar(id = id, name = name, status = status, size = size)
+            }
         }
-        Text(initials, style = if (size >= 72) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleMedium, color = ink)
+    }
+}
+
+/** Initials inside a clean circular container with soft, warm background tint. */
+@Composable
+fun Avatar(id: Long = 0L, name: String, status: RadarStatus, size: Int = 56, modifier: Modifier = Modifier) {
+    val initials = name.split(' ', '-').filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercaseChar().toString() }.ifEmpty { "?" }
+    val fill = StatusColors.container(status)
+    val ink = StatusColors.onContainer(status)
+
+    Box(
+        modifier = modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(fill),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            initials,
+            style = if (size >= 72) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleMedium,
+            color = ink,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
     }
 }
 
