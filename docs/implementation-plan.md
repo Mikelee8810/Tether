@@ -1,6 +1,6 @@
 # RelationshipRadar Implementation Plan
 
-> **Next-wave product work:** See [`docs/tether-product-evolution-roadmap.md`](tether-product-evolution-roadmap.md) for the approved roadmap covering voice memory capture, contextual follow-ups, Today's Tethers, Orbit constellation mapping, richer relationship briefs/call overlay, actionable widgets, and ADHD Rescue Mode.
+> **Next-wave product work:** See [`docs/tether-product-evolution-roadmap.md`](tether-product-evolution-roadmap.md) for the approved main roadmap and [`docs/tether-product-evolution-roadmap-round3.md`](tether-product-evolution-roadmap-round3.md) for the approved Last30 Round 3 additions: Care Seasons, source-linked Call Moments, Little Things, Best Time + Best Way to Reach, Only Group Contact Lately, and Tether Cue.
 
 ## Phase 1 — Android Foundation
 - Native Android app (Kotlin + Jetpack Compose)
