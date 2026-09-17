@@ -55,6 +55,15 @@ class RadarViewModel(app: Application) : AndroidViewModel(app) {
     fun createPerson(name: String, categoryId: Long?, onDone: (Long) -> Unit = {}) =
         viewModelScope.launch { onDone(repo.createPerson(name, categoryId)) }
 
+    fun createPersonWithNotes(name: String, categoryId: Long?, notes: String, onDone: (Long) -> Unit = {}) =
+        viewModelScope.launch {
+            val id = repo.createPerson(name, categoryId)
+            if (notes.isNotBlank()) {
+                repo.getPerson(id)?.let { repo.updatePerson(it.copy(notes = notes)) }
+            }
+            onDone(id)
+        }
+
     fun updatePerson(p: Person) = viewModelScope.launch { repo.updatePerson(p) }
     fun setCategory(personId: Long, categoryId: Long?) = viewModelScope.launch { repo.setCategory(personId, categoryId) }
     fun dismissPrompt(personId: Long) = viewModelScope.launch { repo.bumpPromptCount(personId) }
@@ -108,6 +117,35 @@ class RadarViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun finishOnboarding() = viewModelScope.launch { settings.setOnboardingDone() }
+
+    fun setAiProvider(provider: String) = viewModelScope.launch { settings.setAiProvider(provider) }
+    fun setGeminiApiKey(key: String) = viewModelScope.launch { settings.setGeminiApiKey(key) }
+    fun setGroqApiKey(key: String) = viewModelScope.launch { settings.setGroqApiKey(key) }
+    fun setOpenRouterApiKey(key: String) = viewModelScope.launch { settings.setOpenRouterApiKey(key) }
+    fun setGrokApiKey(key: String) = viewModelScope.launch { settings.setGrokApiKey(key) }
+    fun setOpenAiApiKey(key: String) = viewModelScope.launch { settings.setOpenAiApiKey(key) }
+    fun setAnthropicApiKey(key: String) = viewModelScope.launch { settings.setAnthropicApiKey(key) }
+    fun setCustomApi(baseUrl: String, key: String, model: String) = viewModelScope.launch { settings.setCustomApi(baseUrl, key, model) }
+
+    fun recordManualCatchUp(personId: Long, note: String = "Caught up today") = viewModelScope.launch {
+        val interaction = com.relationshipradar.app.data.db.Interaction(
+            personId = personId,
+            source = com.relationshipradar.app.data.db.InteractionSource.MANUAL,
+            type = com.relationshipradar.app.data.db.InteractionType.OTHER,
+            timestamp = System.currentTimeMillis(),
+            direction = com.relationshipradar.app.data.db.Direction.OUTGOING,
+            countsTowardTimer = true,
+            approximate = false,
+            note = note,
+            externalId = java.util.UUID.randomUUID().toString()
+        )
+        repo.record(interaction)
+        settings.recordCatchUpGamification(sparks = 10)
+    }
+
+    fun awardSparks(sparks: Int) = viewModelScope.launch {
+        settings.addSparks(sparks)
+    }
 }
 
 private typealias Flow<T> = kotlinx.coroutines.flow.Flow<T>

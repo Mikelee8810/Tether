@@ -64,6 +64,31 @@ class ContactsImporter(private val context: Context, private val repo: Repositor
             }
         }
 
+        val birthdays = mutableMapOf<String, String>()
+        val anniversaries = mutableMapOf<String, String>()
+        cr.query(
+            ContactsContract.Data.CONTENT_URI,
+            arrayOf(
+                ContactsContract.Data.LOOKUP_KEY,
+                ContactsContract.CommonDataKinds.Event.START_DATE,
+                ContactsContract.CommonDataKinds.Event.TYPE
+            ),
+            "${ContactsContract.Data.MIMETYPE} = ?",
+            arrayOf(ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE),
+            null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val key = c.getString(0) ?: continue
+                val date = c.getString(1) ?: continue
+                val type = c.getInt(2)
+                if (type == ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY) {
+                    birthdays[key] = date
+                } else if (type == ContactsContract.CommonDataKinds.Event.TYPE_ANNIVERSARY) {
+                    anniversaries[key] = date
+                }
+            }
+        }
+
         for ((key, name) in contacts) {
             seenLookupKeys += key
             var person = repo.findPersonByIdentifier(IdentifierType.CONTACT_LOOKUP, key)
@@ -72,15 +97,34 @@ class ContactsImporter(private val context: Context, private val repo: Repositor
                 person = phones[key]?.firstNotNullOfOrNull { repo.findPersonByIdentifier(IdentifierType.PHONE, it) }
                     ?: emails[key]?.firstNotNullOfOrNull { repo.findPersonByIdentifier(IdentifierType.EMAIL, it) }
             }
+            val bday = birthdays[key]
+            val anniv = anniversaries[key]
             val personId = if (person == null) {
                 created++
                 val id = repo.createPerson(name)
-                repo.getPerson(id)?.let { repo.updatePerson(it.copy(contactLookupKey = key, avatar = "photo")) }
+                repo.getPerson(id)?.let {
+                    repo.updatePerson(
+                        it.copy(
+                            contactLookupKey = key,
+                            avatar = "photo",
+                            birthday = bday,
+                            anniversary = anniv
+                        )
+                    )
+                }
                 id
             } else {
                 updated++
                 if (person.archived) repo.restore(person.id) // returning contact: restore + merge
-                if (person.displayName != name || person.contactLookupKey != key) repo.updatePerson(person.copy(displayName = name, contactLookupKey = key, avatar = person.avatar ?: "photo"))
+                repo.updatePerson(
+                    person.copy(
+                        displayName = name,
+                        contactLookupKey = key,
+                        avatar = person.avatar ?: "photo",
+                        birthday = bday ?: person.birthday,
+                        anniversary = anniv ?: person.anniversary
+                    )
+                )
                 person.id
             }
             repo.addIdentifier(personId, IdentifierType.CONTACT_LOOKUP, key)

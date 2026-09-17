@@ -63,6 +63,9 @@ interface PersonDao {
     @Query("SELECT * FROM people WHERE id = :id")
     suspend fun get(id: Long): Person?
 
+    @Query("SELECT * FROM people")
+    suspend fun getAll(): List<Person>
+
     @Query("SELECT * FROM people WHERE displayName = :name COLLATE NOCASE LIMIT 1")
     suspend fun findByName(name: String): Person?
 
@@ -103,6 +106,9 @@ interface IdentifierDao {
     @Query("SELECT * FROM identifiers WHERE type = :type")
     suspend fun allOfType(type: IdentifierType): List<ContactIdentifier>
 
+    @Query("SELECT * FROM identifiers")
+    suspend fun getAll(): List<ContactIdentifier>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(identifier: ContactIdentifier): Long
 
@@ -114,6 +120,12 @@ interface IdentifierDao {
 interface InteractionDao {
     @Query("SELECT * FROM interactions WHERE personId = :personId ORDER BY timestamp DESC")
     fun observeForPerson(personId: Long): Flow<List<Interaction>>
+
+    @Query("SELECT * FROM interactions WHERE personId = :personId ORDER BY timestamp DESC")
+    suspend fun forPerson(personId: Long): List<Interaction>
+
+    @Query("SELECT * FROM interactions")
+    suspend fun getAll(): List<Interaction>
 
     @Query("SELECT * FROM interactions ORDER BY timestamp DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<Interaction>>

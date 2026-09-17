@@ -1,11 +1,86 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Two rounded "cookie" people, overlapping — the circle you keep. -->
-    <path android:fillColor="@android:color/system_accent1_600"
-        android:pathData="M42,30c-2,-6 -10,-6 -12,0c-6,-2 -12,4 -8,10c-6,3 -4,11 2,12c-1,6 6,10 11,6c3,5 10,4 12,-2c6,2 11,-4 8,-10c6,-3 5,-11 -1,-12c1,-6 -6,-10 -12,-4z" />
-    <path android:fillColor="@android:color/system_accent1_300"
-        android:pathData="M78,54c-2,-6 -10,-6 -12,0c-6,-2 -12,4 -8,10c-6,3 -4,11 2,12c-1,6 6,10 11,6c3,5 10,4 12,-2c6,2 11,-4 8,-10c6,-3 5,-11 -1,-12c1,-6 -6,-10 -12,-4z" />
-    <path android:fillColor="@android:color/system_accent1_0"
-        android:pathData="M57,50a5,5 0 1,1 -0.01,0z" />
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Ambient Glow / Drop Shadow Backing -->
+    <path
+        android:fillColor="#254F46E5"
+        android:pathData="M54,26 C36,26 24,38 24,54 C24,70 36,82 54,82 C72,82 84,70 84,54 C84,38 72,26 54,26 Z" />
+
+    <!-- Glass Capsule Backplate -->
+    <path
+        android:fillColor="#15FFFFFF"
+        android:strokeColor="#30FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M54,28 C38,28 26,40 26,54 C26,68 38,80 54,80 C70,80 82,68 82,54 C82,40 70,28 54,28 Z" />
+
+    <!-- Left Loop: Indigo to Sky Gradient -->
+    <path
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M50,38 C36,38 28,45 28,54 C28,63 36,70 50,70 C59,70 65,64 68,58">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="28"
+                android:startY="38"
+                android:endX="68"
+                android:endY="70"
+                android:type="linear">
+                <item android:color="#4F46E5" android:offset="0.0" />
+                <item android:color="#38BDF8" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right Loop: Warm Coral to Amber Sunset Gradient -->
+    <path
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M58,70 C72,70 80,63 80,54 C80,45 72,38 58,38 C49,38 43,44 40,50">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="40"
+                android:startY="38"
+                android:endX="80"
+                android:endY="70"
+                android:type="linear">
+                <item android:color="#EA580C" android:offset="0.0" />
+                <item android:color="#FBBF24" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Interlocking Crossover Overpass (Left Loop weaves over Right Loop) -->
+    <path
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M46,38 C52,38 58,42 62,48">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="46"
+                android:startY="38"
+                android:endX="62"
+                android:endY="48"
+                android:type="linear">
+                <item android:color="#4F46E5" android:offset="0.0" />
+                <item android:color="#38BDF8" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Specular Glass Highlights -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37,42 A2.5,2.5 0 1,1 36.99,42 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M71,66 A2.5,2.5 0 1,1 70.99,66 Z" />
 </vector>

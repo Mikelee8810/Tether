@@ -51,30 +51,39 @@ class RadarWidget : GlanceAppWidget() {
 
     @Composable
     private fun Content(radar: List<PersonRadar>) {
+        val context = androidx.glance.LocalContext.current
         Column(
-            GlanceModifier.fillMaxWidth().background(GlanceTheme.colors.widgetBackground).cornerRadius(16.dp).padding(12.dp),
+            GlanceModifier.fillMaxWidth().background(GlanceTheme.colors.widgetBackground).cornerRadius(18.dp).padding(14.dp),
         ) {
             Row(
-                GlanceModifier.fillMaxWidth().clickable(actionStartActivity(Intent(Intent.ACTION_VIEW).setClass(LocalCtx, MainActivity::class.java).putExtra("openLog", true))),
+                GlanceModifier.fillMaxWidth().clickable(actionStartActivity(Intent(context, MainActivity::class.java).putExtra("openLog", true))),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Circle", style = TextStyle(fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface))
+                Text("Tether", style = TextStyle(fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface))
                 Spacer(GlanceModifier.defaultWeight())
-                Text("+ I saw someone", style = TextStyle(color = GlanceTheme.colors.primary))
+                Text("+ Quick Log", style = TextStyle(color = GlanceTheme.colors.primary, fontWeight = FontWeight.Medium))
             }
             Spacer(GlanceModifier.height(8.dp))
             if (radar.isEmpty()) {
-                Text("All good", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
+                Text("In touch with everyone", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
             } else {
                 radar.take(5).forEach { r ->
                     Row(
                         GlanceModifier.fillMaxWidth().padding(vertical = 4.dp)
-                            .clickable(actionStartActivity(Intent(Intent.ACTION_VIEW).setClass(LocalCtx, MainActivity::class.java).putExtra("personId", r.person.id))),
+                            .clickable(actionStartActivity(Intent(context, MainActivity::class.java).putExtra("personId", r.person.id))),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(GlanceModifier.size(10.dp).background(when (r.status) { RadarStatus.DUE_SOON -> GlanceTheme.colors.tertiary; RadarStatus.OVERDUE, RadarStatus.VERY_OVERDUE -> GlanceTheme.colors.error; else -> GlanceTheme.colors.primary }).cornerRadius(5.dp)) {}
+                        Box(
+                            GlanceModifier.size(width = 4.dp, height = 14.dp)
+                                .background(when (r.status) {
+                                    RadarStatus.DUE_SOON -> GlanceTheme.colors.tertiary
+                                    RadarStatus.OVERDUE, RadarStatus.VERY_OVERDUE -> GlanceTheme.colors.error
+                                    else -> GlanceTheme.colors.primary
+                                })
+                                .cornerRadius(2.dp)
+                        ) {}
                         Spacer(GlanceModifier.width(8.dp))
-                        Text(r.person.displayName, style = TextStyle(color = GlanceTheme.colors.onSurface), maxLines = 1, modifier = GlanceModifier.defaultWeight())
+                        Text(r.person.displayName, style = TextStyle(color = GlanceTheme.colors.onSurface, fontWeight = FontWeight.Medium), maxLines = 1, modifier = GlanceModifier.defaultWeight())
                         Text(Format.ago(r.lastEffortAt), style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
                     }
                 }

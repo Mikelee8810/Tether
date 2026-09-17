@@ -53,14 +53,24 @@ object Notifications {
         if (!canPost(context)) return
         val days = radar.daysSinceEffort
         val text = if (days == null) "You haven't reached out yet" else "Last effort was $days days ago"
+        val notifId = INDIVIDUAL_BASE + radar.person.id.toInt()
+        val snoozeIntent = NotificationActionReceiver.createSnoozeIntent(context, radar.person.id, notifId)
+        val snoozePendingIntent = PendingIntent.getBroadcast(
+            context,
+            notifId,
+            snoozeIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val n = NotificationCompat.Builder(context, CHANNEL_INDIVIDUAL)
             .setSmallIcon(R.drawable.ic_radar)
             .setContentTitle("Reach out to ${radar.person.displayName}")
             .setContentText(text)
             .setContentIntent(openApp(context, radar.person.id))
+            .addAction(R.drawable.ic_radar, "Snooze 3d", snoozePendingIntent)
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(INDIVIDUAL_BASE + radar.person.id.toInt(), n)
+        NotificationManagerCompat.from(context).notify(notifId, n)
     }
 
     fun postRoundup(context: Context, due: List<PersonRadar>) {

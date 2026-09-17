@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:name=".RadarApp"
@@ -49,6 +52,30 @@
         <receiver android:name=".connectors.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Tether In-Call Floating HUD Overlay Service -->
+        <service
+            android:name=".service.CallOverlayService"
+            android:exported="false" />
+
+        <!-- Phone State Call Listener -->
+        <receiver
+            android:name=".receiver.PhoneStateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Notification Action Receiver (Snooze 3d headless) -->
+        <receiver
+            android:name=".work.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.relationshipradar.app.action.SNOOZE_3D" />
             </intent-filter>
         </receiver>
 

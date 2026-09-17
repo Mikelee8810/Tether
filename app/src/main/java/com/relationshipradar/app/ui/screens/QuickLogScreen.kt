@@ -1,7 +1,9 @@
 package com.relationshipradar.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -30,12 +33,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relationshipradar.app.data.db.InteractionType
 import com.relationshipradar.app.ui.Format
 import com.relationshipradar.app.ui.RadarViewModel
+import com.relationshipradar.app.ui.liquidGlass
+import com.relationshipradar.app.ui.theme.StatusColors
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 
@@ -112,18 +120,37 @@ fun QuickLogScreen(vm: RadarViewModel, preselectedPersonId: Long?, onDone: () ->
 
         Spacer(Modifier.height(8.dp))
         val canSave = selected != null && (whenChoice != When.PICK || customDate != null)
-        Button(
-            enabled = canSave,
-            onClick = {
-                val ts = when (whenChoice) {
-                    When.PICK -> customDate!!
-                    else -> System.currentTimeMillis() - TimeUnit.DAYS.toMillis(whenChoice.daysAgo!!)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .liquidGlass(
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = if (canSave) 6.dp else 0.dp,
+                    surfaceAlphaTop = if (canSave) 0.95f else 0.40f,
+                    surfaceAlphaBottom = if (canSave) 0.70f else 0.20f,
+                )
+                .background(
+                    if (canSave) StatusColors.Cobalt else Color(0xFFCBD5E1),
+                    RoundedCornerShape(16.dp)
+                )
+                .clickable(enabled = canSave) {
+                    val ts = when (whenChoice) {
+                        When.PICK -> customDate!!
+                        else -> System.currentTimeMillis() - TimeUnit.DAYS.toMillis(whenChoice.daysAgo!!)
+                    }
+                    vm.logManual(selected!!.person.id, type, ts, whenChoice.approx, note.trim())
+                    celebrating = true
                 }
-                vm.logManual(selected!!.person.id, type, ts, whenChoice.approx, note.trim())
-                celebrating = true
-            },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-        ) { Text("Log it", style = MaterialTheme.typography.labelLarge) }
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "Save Moment",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+        }
     }
 
     if (celebrating) com.relationshipradar.app.ui.Celebrate(onDone)
@@ -132,10 +159,10 @@ fun QuickLogScreen(vm: RadarViewModel, preselectedPersonId: Long?, onDone: () ->
         val state = rememberDatePickerState(initialSelectedDateMillis = customDate ?: System.currentTimeMillis())
         DatePickerDialog(
             onDismissRequest = { showPicker = false },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
             confirmButton = {
                 TextButton(onClick = {
                     state.selectedDateMillis?.let { utc ->
-                        // Picker gives UTC midnight; convert to local noon so the day is right.
                         val day = java.time.Instant.ofEpochMilli(utc).atZone(ZoneId.of("UTC")).toLocalDate()
                         customDate = day.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                     }
@@ -149,9 +176,16 @@ fun QuickLogScreen(vm: RadarViewModel, preselectedPersonId: Long?, onDone: () ->
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun FlowChips(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
-    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         labels.forEachIndexed { i, l ->
-            FilterChip(selected = i == selectedIndex, onClick = { onSelect(i) }, label = { Text(l) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(50))
+            com.relationshipradar.app.ui.SquircleChip(
+                selected = i == selectedIndex,
+                label = l,
+                onClick = { onSelect(i) }
+            )
         }
     }
 }

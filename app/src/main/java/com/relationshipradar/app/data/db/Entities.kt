@@ -65,6 +65,15 @@ data class Person(
     @androidx.room.ColumnInfo(defaultValue = "NULL") val avatar: String? = null,
     /** Contact lookup key, cached here so the photo can be loaded without a join. */
     @androidx.room.ColumnInfo(defaultValue = "NULL") val contactLookupKey: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val birthday: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val anniversary: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val talkingPoints: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val messengerHandle: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val whatsappNumber: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val instagramHandle: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val snapchatHandle: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val discordHandle: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val meetLink: String? = null,
 )
 
 @Entity(

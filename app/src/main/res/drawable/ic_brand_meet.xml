@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Clean, iconic Google Meet Video Camera -->
+    <!-- Camera Body -->
+    <path
+        android:fillColor="#00832D"
+        android:pathData="M3,6h9c1.1,0 2,0.9 2,2v8c0,1.1 -0.9,2 -2,2H3c-1.1,0 -2,-0.9 -2,-2V8c0,-1.1 0.9,-2 2,-2z"/>
+    <!-- Camera Lens / Projector -->
+    <path
+        android:fillColor="#00AC47"
+        android:pathData="M16,9.5l5,-3.5v12l-5,-3.5v-5z"/>
+</vector>

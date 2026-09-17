@@ -24,7 +24,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
@@ -40,10 +41,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import com.relationshipradar.app.engine.RadarStatus
@@ -57,6 +60,11 @@ import com.relationshipradar.app.ui.theme.StatusColors
 import com.relationshipradar.app.work.Notifications
 import kotlinx.coroutines.delay
 
+import com.relationshipradar.app.ui.AmbientGlassCanvas
+import com.relationshipradar.app.ui.SignalBars
+import com.relationshipradar.app.ui.liquidGlass
+import androidx.compose.foundation.clickable
+
 /** First run. Three pages, each with its own living illustration, one ask each, all skippable. */
 @Composable
 fun OnboardingScreen(vm: RadarViewModel, onDone: () -> Unit) {
@@ -68,56 +76,147 @@ fun OnboardingScreen(vm: RadarViewModel, onDone: () -> Unit) {
     }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.finishOnboarding(); onDone() }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(Radar.sp4.dp)) {
-        Spacer(Modifier.height(Radar.sp4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(3) { i ->
-                Box(Modifier.size(width = if (i == step) 24.dp else 8.dp, height = 8.dp).background(if (i <= step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape))
-            }
-        }
-        AnimatedContent(
-            step, label = "onboarding", modifier = Modifier.weight(1f),
-            transitionSpec = { (slideInHorizontally { it / 4 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 4 } + fadeOut()) },
-        ) { s ->
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    when (s) { 0 -> ShapeBloom(); 1 -> PeopleCluster(); else -> MockNudge() }
-                }
-                Spacer(Modifier.height(Radar.sp4.dp))
-                when (s) {
-                    0 -> {
-                        Text("Stay close to the people who matter.", style = MaterialTheme.typography.displaySmall)
-                        Spacer(Modifier.height(Radar.sp2.dp))
-                        Text("Relationship Radar keeps track of one thing: when you last reached out. Calls, texts, chats you send. Not what was said, and never what they did.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(Radar.sp2.dp))
-                        Hint("Everything stays on this phone. No account.")
-                    }
-                    1 -> {
-                        Text("Start with your contacts.", style = MaterialTheme.typography.displaySmall)
-                        Spacer(Modifier.height(Radar.sp2.dp))
-                        Text("Everyone saved on your phone joins so history builds on its own. Reminders stay off until you turn them on for someone.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    else -> {
-                        Text("One quiet nudge a day.", style = MaterialTheme.typography.displaySmall)
-                        Spacer(Modifier.height(Radar.sp2.dp))
-                        Text("A morning roundup of who's due. Your closest people can get their own alert. After a week of nudges it goes quiet.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        syncMsg?.let { Spacer(Modifier.height(Radar.sp1.dp)); Hint(it) }
-                    }
+    AmbientGlassCanvas {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(Radar.sp4.dp)) {
+            Spacer(Modifier.height(Radar.sp4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                repeat(3) { i ->
+                    Box(
+                        Modifier
+                            .size(width = if (i == step) 28.dp else 8.dp, height = 8.dp)
+                            .background(
+                                if (i <= step) StatusColors.Cobalt else Color(0x300F172A),
+                                RoundedCornerShape(3.dp)
+                            )
+                    )
                 }
             }
-        }
-        Spacer(Modifier.height(Radar.sp4.dp))
-        when (step) {
-            0 -> Button(onClick = { step = 1 }, Modifier.fillMaxWidth().height(56.dp)) { Text("Get started") }
-            1 -> {
-                Button(onClick = { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) }, Modifier.fillMaxWidth().height(56.dp)) { Text("Import contacts") }
-                TextButton(onClick = { step = 2 }, Modifier.fillMaxWidth()) { Text("Skip for now") }
+            AnimatedContent(
+                step, label = "onboarding", modifier = Modifier.weight(1f),
+                transitionSpec = { (slideInHorizontally { it / 4 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 4 } + fadeOut()) },
+            ) { s ->
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        when (s) { 0 -> ShapeBloom(); 1 -> PeopleCluster(); else -> MockNudge() }
+                    }
+                    Spacer(Modifier.height(Radar.sp4.dp))
+                    when (s) {
+                        0 -> {
+                            Text(
+                                "Stay close to the people who matter.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                                color = Color(0xFF0F172A),
+                                letterSpacing = (-0.5).sp
+                            )
+                            Spacer(Modifier.height(Radar.sp2.dp))
+                            Text("Relationship Radar keeps track of one thing: when you last reached out. Calls, texts, chats you send. Not what was said, and never what they did.", style = MaterialTheme.typography.bodyLarge, color = Color(0xFF475569))
+                            Spacer(Modifier.height(Radar.sp2.dp))
+                            Hint("Everything stays on this phone. No account.")
+                        }
+                        1 -> {
+                            Text(
+                                "Start with your contacts.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                                color = Color(0xFF0F172A),
+                                letterSpacing = (-0.5).sp
+                            )
+                            Spacer(Modifier.height(Radar.sp2.dp))
+                            Text("Everyone saved on your phone joins so history builds on its own. Reminders stay off until you turn them on for someone.", style = MaterialTheme.typography.bodyLarge, color = Color(0xFF475569))
+                        }
+                        else -> {
+                            Text(
+                                "One quiet nudge a day.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                                color = Color(0xFF0F172A),
+                                letterSpacing = (-0.5).sp
+                            )
+                            Spacer(Modifier.height(Radar.sp2.dp))
+                            Text("A morning roundup of who's due. Your closest people can get their own alert. After a week of nudges it goes quiet.", style = MaterialTheme.typography.bodyLarge, color = Color(0xFF475569))
+                            syncMsg?.let { Spacer(Modifier.height(Radar.sp1.dp)); Hint(it) }
+                        }
+                    }
+                }
             }
-            else -> if (Notifications.canPost(ctx)) {
-                Button(onClick = { vm.finishOnboarding(); onDone() }, Modifier.fillMaxWidth().height(56.dp)) { Text("Done") }
-            } else {
-                Button(onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }, Modifier.fillMaxWidth().height(56.dp)) { Text("Allow notifications") }
-                TextButton(onClick = { vm.finishOnboarding(); onDone() }, Modifier.fillMaxWidth()) { Text("Not now") }
+            Spacer(Modifier.height(Radar.sp4.dp))
+            when (step) {
+                0 -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .liquidGlass(
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = 6.dp,
+                                surfaceAlphaTop = 0.90f,
+                                surfaceAlphaBottom = 0.70f,
+                            )
+                            .background(StatusColors.Cobalt, RoundedCornerShape(16.dp))
+                            .clickable { step = 1 }
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Get started", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Black, color = Color.White)
+                    }
+                }
+                1 -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .liquidGlass(
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = 6.dp,
+                                surfaceAlphaTop = 0.90f,
+                                surfaceAlphaBottom = 0.70f,
+                            )
+                            .background(StatusColors.Cobalt, RoundedCornerShape(16.dp))
+                            .clickable { contactsLauncher.launch(Manifest.permission.READ_CONTACTS) }
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Import contacts", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Black, color = Color.White)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { step = 2 }, Modifier.fillMaxWidth()) { Text("Skip for now", color = Color(0xFF64748B), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
+                }
+                else -> if (Notifications.canPost(ctx)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .liquidGlass(
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = 6.dp,
+                                surfaceAlphaTop = 0.90f,
+                                surfaceAlphaBottom = 0.70f,
+                            )
+                            .background(StatusColors.Cobalt, RoundedCornerShape(16.dp))
+                            .clickable { vm.finishOnboarding(); onDone() }
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Done", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Black, color = Color.White)
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .liquidGlass(
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = 6.dp,
+                                surfaceAlphaTop = 0.90f,
+                                surfaceAlphaBottom = 0.70f,
+                            )
+                            .background(StatusColors.Cobalt, RoundedCornerShape(16.dp))
+                            .clickable { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Allow notifications", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Black, color = Color.White)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { vm.finishOnboarding(); onDone() }, Modifier.fillMaxWidth()) { Text("Not now", color = Color(0xFF64748B), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
+                }
             }
         }
     }
