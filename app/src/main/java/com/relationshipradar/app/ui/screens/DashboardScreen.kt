@@ -130,8 +130,12 @@ fun DashboardScreen(
     var showAddPersonDialog by remember { mutableStateOf(false) }
     var reachOutTarget by remember { mutableStateOf<PersonRadar?>(null) }
     var celebrationTrigger by remember { mutableStateOf<Long?>(null) }
+    var sparkIndex by rememberSaveable { mutableIntStateOf(0) }
 
     val attention = radar.filter { it.status.needsAttention }
+    val sparkCandidates = if (attention.isNotEmpty()) attention else radar
+    val activeCandidate = sparkCandidates.getOrNull(if (sparkCandidates.isNotEmpty()) sparkIndex % sparkCandidates.size else 0)
+
     val baseList = when (filter) {
         Filter.ATTENTION -> attention
         Filter.FREQUENT -> radar.sortedByDescending { it.lastEffortAt ?: 0L }
@@ -177,7 +181,39 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f)
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Sparks Counter Pill (1-tap shortcut to Orbit Constellation)
+                    Box(
+                        modifier = Modifier
+                            .liquidGlass(
+                                shape = RoundedCornerShape(14.dp),
+                                elevation = 3.dp,
+                                surfaceAlphaTop = 0.88f,
+                                surfaceAlphaBottom = 0.60f,
+                                tintColor = Color(0xFFFFFBEB)
+                            )
+                            .clickable { onOpenNewPeople() }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("✨", fontSize = 12.sp)
+                            Text(
+                                text = "${appSettings.orbitSparks}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFD97706),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
                     // + Track Person
                     Box(
                         modifier = Modifier
@@ -188,7 +224,7 @@ fun DashboardScreen(
                                 surfaceAlphaBottom = 0.55f,
                             )
                             .clickable { showAddPersonDialog = true }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
@@ -220,7 +256,7 @@ fun DashboardScreen(
                                 surfaceAlphaBottom = 0.55f,
                             )
                             .clickable { onOpenSettings() }
-                            .padding(10.dp),
+                            .padding(9.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -333,22 +369,38 @@ fun DashboardScreen(
             }
         }
 
-        // ---- Elevated Liquid Glass HUD (Radar Monitor & Daily Spark) ------------------
-        item(key = "hud_header") {
-            RadarGlassHud(
+        // ---- Daily Spark Hero Card (Spacious, Warm, Elevated) -----------------------
+        if (activeCandidate != null) {
+            item(key = "daily_spark_hero") {
+                TodaySparkHeroCard(
+                    candidate = activeCandidate,
+                    canShuffle = sparkCandidates.size > 1,
+                    onShuffle = { sparkIndex++ },
+                    onOpenPerson = onOpenPerson,
+                    onReachOut = { reachOutTarget = it }
+                )
+            }
+        }
+
+        // ---- Uncategorized / Unmatched Contacts Banner ------------------------------
+        if (uncategorized.isNotEmpty() || pending.isNotEmpty()) {
+            item(key = "unorganized_banner") {
+                UnorganizedContactsBanner(
+                    uncategorizedCount = uncategorized.size,
+                    pendingCount = pending.size,
+                    onOpenNewPeople = onOpenNewPeople,
+                    onOpenWho = onOpenWho
+                )
+            }
+        }
+
+        // ---- Orbit Pulse Section Header & Precision Filter Bar ----------------------
+        item(key = "orbit_pulse_section") {
+            OrbitPulseHeader(
                 attentionCount = attention.size,
                 totalCount = radar.size,
-                uncategorizedCount = uncategorized.size,
-                pendingCount = pending.size,
                 currentFilter = filter,
-                onFilterSelected = { filter = it },
-                onOpenNewPeople = onOpenNewPeople,
-                onOpenWho = onOpenWho,
-                sparkCandidates = if (attention.isNotEmpty()) attention else radar,
-                onOpenSpark = onOpenPerson,
-                onReachOutSpark = { sparkRadar -> reachOutTarget = sparkRadar },
-                appSettings = appSettings,
-                onOpenSettings = onOpenSettings,
+                onFilterSelected = { filter = it }
             )
         }
 
@@ -480,313 +532,336 @@ private fun rank(s: RadarStatus) = when (s) {
     RadarStatus.TRACK_ONLY -> 0
 }
 
-/** Apple-style Elevated Liquid Glass HUD with live signal summary and segmented pill controls. */
+/** Dedicated, elevated Today's Spark hero card with spacious layout and zero crowding. */
 @Composable
-private fun RadarGlassHud(
-    attentionCount: Int,
-    totalCount: Int,
-    uncategorizedCount: Int,
-    pendingCount: Int,
-    currentFilter: Filter,
-    onFilterSelected: (Filter) -> Unit,
-    onOpenNewPeople: () -> Unit,
-    onOpenWho: () -> Unit,
-    sparkCandidates: List<PersonRadar> = emptyList(),
-    onOpenSpark: ((Long) -> Unit)? = null,
-    onReachOutSpark: ((PersonRadar) -> Unit)? = null,
-    appSettings: AppSettings,
-    onOpenSettings: () -> Unit,
+private fun TodaySparkHeroCard(
+    candidate: PersonRadar,
+    canShuffle: Boolean,
+    onShuffle: () -> Unit,
+    onOpenPerson: (Long) -> Unit,
+    onReachOut: (PersonRadar) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val hudShape = RoundedCornerShape(24.dp)
-    var sparkIndex by rememberSaveable { mutableIntStateOf(0) }
-    val activeCandidate = sparkCandidates.getOrNull(if (sparkCandidates.isNotEmpty()) sparkIndex % sparkCandidates.size else 0)
+    val person = candidate.person
+    val firstTopic = person.talkingPoints?.lines()?.firstOrNull { it.isNotBlank() }?.removePrefix("- ")?.removePrefix("• ")?.trim()
+    val promptText = when {
+        firstTopic != null -> firstTopic
+        person.birthday != null -> "Birthday is coming up!"
+        else -> "Hasn't heard from you in a while"
+    }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .liquidGlass(
-                    shape = hudShape,
-                    elevation = 14.dp,
-                    surfaceAlphaTop = 0.78f,
-                    surfaceAlphaBottom = 0.52f,
-                    specularAlphaTop = 0.98f,
-                    specularAlphaBottom = 0.22f,
-                )
-                .padding(16.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // ---- Daily Spark Hero Banner (ADHD Novelty Engine) ----
-                if (activeCandidate != null) {
-                    val person = activeCandidate.person
-                    val firstTopic = person.talkingPoints?.lines()?.firstOrNull { it.isNotBlank() }?.removePrefix("- ")?.removePrefix("• ")?.trim()
-                    val promptText = when {
-                        firstTopic != null -> firstTopic
-                        person.birthday != null -> "Birthday is coming up!"
-                        else -> "Hasn't heard from you in a while"
-                    }
-
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                shape = RoundedCornerShape(22.dp),
+                elevation = 6.dp,
+                surfaceAlphaTop = 0.88f,
+                surfaceAlphaBottom = 0.58f,
+                specularAlphaTop = 0.95f,
+                tintColor = Color(0xFFFFF7ED)
+            )
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Top Header: Badge + Shuffle button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        Color(0xFFEA580C).copy(alpha = 0.12f),
-                                        Color(0xFFF59E0B).copy(alpha = 0.08f),
-                                        Color.White.copy(alpha = 0.70f)
-                                    )
-                                )
-                            )
-                            .border(
-                                1.dp,
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        Color(0xFFEA580C).copy(alpha = 0.35f),
-                                        Color.White.copy(alpha = 0.85f)
-                                    )
-                                ),
-                                RoundedCornerShape(16.dp)
-                            )
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFEDD5)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Face(
-                                id = person.id,
-                                name = person.displayName,
-                                status = activeCandidate.status,
-                                avatar = person.avatar,
-                                lookupKey = person.contactLookupKey,
-                                size = 44,
-                                showRing = true,
-                                shape = CircleShape,
-                            )
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onOpenSpark?.invoke(person.id) }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = "TODAY'S SPARK · ${person.displayName.split(" ").first()}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = StatusColors.Flame,
-                                        letterSpacing = 0.6.sp,
-                                        maxLines = 1,
-                                    )
-                                }
-                                Spacer(Modifier.height(1.dp))
-                                Text(
-                                    text = promptText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF334155),
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-
-                            // Shuffle Button (Compact Tactile Icon)
-                            if (sparkCandidates.size > 1) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(9.dp))
-                                        .background(Color.White.copy(alpha = 0.85f))
-                                        .border(0.5.dp, Color(0xFFE2E8F0), RoundedCornerShape(9.dp))
-                                        .clickable { sparkIndex++ },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.AutoAwesome,
-                                        contentDescription = "Shuffle",
-                                        tint = StatusColors.Cobalt,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                            }
-
-                            // Tactile 3D Say Hey Button
-                            Box(
-                                modifier = Modifier
-                                    .shadow(2.dp, RoundedCornerShape(10.dp), spotColor = Color(0x30E11D48))
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(Color(0xFFFF5757), StatusColors.Flame)
-                                        )
-                                    )
-                                    .border(0.8.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        if (onReachOutSpark != null && activeCandidate != null) onReachOutSpark(activeCandidate)
-                                        else onOpenSpark?.invoke(person.id)
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Rounded.Chat,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Text(
-                                        "Say Hey",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        }
+                        Text("✨", fontSize = 12.sp)
                     }
-                }
-
-                // ---- Gamified Orbit Starlight Banner (Animated Graphics & Motion) ----
-                OrbitStarlightBanner(
-                    sparks = appSettings.orbitSparks,
-                    weeklyCount = appSettings.weeklyConnectionsCount,
-                    onOpenGamification = onOpenSettings,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // ---- Orbit Pulse Monitor (Positive Momentum Framing) ----
-                val connectedCount = (totalCount - attentionCount).coerceAtLeast(0)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text(
-                            text = "ORBIT PULSE",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF64748B),
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 1.2.sp,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = when {
-                                totalCount == 0 -> "No Active Connections"
-                                attentionCount == 0 -> "All Connections Vibrant ✨"
-                                attentionCount == 1 -> "1 Ready to Reconnect"
-                                else -> "$attentionCount to Reconnect"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Black,
-                            color = if (attentionCount > 0) StatusColors.Flame else Color(0xFF0F172A),
-                        )
-                    }
-                    SignalBars(
-                        status = if (attentionCount > 0) RadarStatus.OVERDUE else RadarStatus.GOOD,
-                        maxHeight = 20.dp,
-                        barWidth = 4.5.dp,
-                        spacing = 2.5.dp,
+                    Text(
+                        text = "TODAY'S SPARK",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFEA580C),
+                        letterSpacing = 0.8.sp
                     )
                 }
 
-
-                // Precision Glass Segmented Filter Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFCBD5E1).copy(alpha = 0.40f), RoundedCornerShape(14.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
-                        .padding(3.5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Filter.entries.forEach { f ->
-                        val isSelected = currentFilter == f
-                        val itemShape = RoundedCornerShape(11.dp)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(itemShape)
-                                .then(
-                                    if (isSelected) {
-                                        Modifier
-                                            .shadow(3.dp, itemShape, spotColor = Color(0x180F172A))
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    listOf(
-                                                        Color.White,
-                                                        Color(0xFFF8FAFC)
-                                                    )
-                                                )
-                                            )
-                                            .border(1.dp, Color.White.copy(alpha = 0.95f), itemShape)
-                                    } else {
-                                        Modifier.background(Color.Transparent)
-                                    }
-                                )
-                                .clickable { onFilterSelected(f) }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center,
+                if (canShuffle) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.80f))
+                            .border(0.5.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                            .clickable(onClick = onShuffle)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            Icon(
+                                Icons.Rounded.AutoAwesome,
+                                contentDescription = "Shuffle",
+                                tint = StatusColors.Cobalt,
+                                modifier = Modifier.size(13.dp)
+                            )
                             Text(
-                                text = when (f) {
-                                    Filter.ATTENTION -> if (attentionCount > 0) "Reconnect ($attentionCount)" else "Reconnect"
-                                    Filter.FREQUENT -> "Frequent"
-                                    Filter.ACTIVE -> "Active"
-                                    Filter.ALL -> "All ($totalCount)"
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isSelected) Color(0xFF0F172A) else Color(0xFF475569),
+                                text = "Shuffle",
+                                style = MaterialTheme.typography.labelSmall,
                                 fontSize = 11.sp,
-                                maxLines = 1,
+                                fontWeight = FontWeight.Bold,
+                                color = StatusColors.Cobalt
                             )
                         }
+                    }
+                }
+            }
+
+            // Main Content Row: Face, Info, and Say Hey Action
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Face(
+                    id = person.id,
+                    name = person.displayName,
+                    status = candidate.status,
+                    avatar = person.avatar,
+                    lookupKey = person.contactLookupKey,
+                    size = 48,
+                    showRing = true,
+                    shape = CircleShape
+                )
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onOpenPerson(person.id) }
+                ) {
+                    Text(
+                        text = person.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = promptText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF475569),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Tactile 3D Say Hey Button
+                Box(
+                    modifier = Modifier
+                        .shadow(3.dp, RoundedCornerShape(12.dp), spotColor = Color(0x35E11D48))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFFFF5757), StatusColors.Flame)
+                            )
+                        )
+                        .border(0.8.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .clickable { onReachOut(candidate) }
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.Chat,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            "Say Hey",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
         }
+    }
+}
 
-        // Uncategorized / Unmatched Banner
-        if (uncategorizedCount > 0 || pendingCount > 0) {
-            val bannerShape = RoundedCornerShape(16.dp)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .liquidGlass(shape = bannerShape, elevation = 4.dp, surfaceAlphaTop = 0.85f, surfaceAlphaBottom = 0.60f)
-                    .clickable { if (uncategorizedCount > 0) onOpenNewPeople() else onOpenWho() }
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+/** Clean section header for Orbit Pulse with signal strength and the 4-pill segmented filter bar. */
+@Composable
+private fun OrbitPulseHeader(
+    attentionCount: Int,
+    totalCount: Int,
+    currentFilter: Filter,
+    onFilterSelected: (Filter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Section Header Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "ORBIT PULSE",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 11.5.sp,
+                    color = Color(0xFF64748B),
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = when {
+                        totalCount == 0 -> "No Active Connections"
+                        attentionCount == 0 -> "All Connections Vibrant ✨"
+                        attentionCount == 1 -> "1 Ready to Reconnect"
+                        else -> "$attentionCount to Reconnect"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color = if (attentionCount > 0) StatusColors.Flame else Color(0xFF0F172A)
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                val connectedCount = (totalCount - attentionCount).coerceAtLeast(0)
+                Text(
+                    text = "$connectedCount of $totalCount in touch",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF64748B)
+                )
+                SignalBars(
+                    status = if (attentionCount > 0) RadarStatus.OVERDUE else RadarStatus.GOOD,
+                    maxHeight = 18.dp,
+                    barWidth = 4.dp,
+                    spacing = 2.dp
+                )
+            }
+        }
+
+        // Precision Glass Segmented Filter Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .liquidGlass(
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = 2.dp,
+                    surfaceAlphaTop = 0.85f,
+                    surfaceAlphaBottom = 0.55f
+                )
+                .padding(3.5.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Filter.entries.forEach { f ->
+                val isSelected = currentFilter == f
+                val itemShape = RoundedCornerShape(11.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(itemShape)
+                        .then(
+                            if (isSelected) {
+                                Modifier
+                                    .shadow(2.dp, itemShape, spotColor = Color(0x150F172A))
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(Color.White, Color(0xFFF8FAFC))
+                                        )
+                                    )
+                                    .border(1.dp, Color.White.copy(alpha = 0.95f), itemShape)
+                            } else {
+                                Modifier.background(Color.Transparent)
+                            }
+                        )
+                        .clickable { onFilterSelected(f) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (uncategorizedCount > 0) "$uncategorizedCount new people to organize" else "$pendingCount unmatched contacts",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = StatusColors.Cobalt,
-                    )
-                    Icon(
-                        Icons.AutoMirrored.Rounded.ArrowForward,
-                        contentDescription = null,
-                        tint = StatusColors.Cobalt,
-                        modifier = Modifier.size(16.dp),
+                        text = when (f) {
+                            Filter.ATTENTION -> if (attentionCount > 0) "Reconnect ($attentionCount)" else "Reconnect"
+                            Filter.FREQUENT -> "Frequent"
+                            Filter.ACTIVE -> "Active"
+                            Filter.ALL -> "All ($totalCount)"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (isSelected) Color(0xFF0F172A) else Color(0xFF475569),
+                        fontSize = 11.sp,
+                        maxLines = 1
                     )
                 }
             }
+        }
+    }
+}
+
+/** Clean liquid glass banner for uncategorized or unmatched contacts. */
+@Composable
+private fun UnorganizedContactsBanner(
+    uncategorizedCount: Int,
+    pendingCount: Int,
+    onOpenNewPeople: () -> Unit,
+    onOpenWho: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bannerShape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .liquidGlass(shape = bannerShape, elevation = 4.dp, surfaceAlphaTop = 0.85f, surfaceAlphaBottom = 0.60f)
+            .clickable { if (uncategorizedCount > 0) onOpenNewPeople() else onOpenWho() }
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (uncategorizedCount > 0) "$uncategorizedCount new people to organize" else "$pendingCount unmatched contacts",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = StatusColors.Cobalt,
+            )
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowForward,
+                contentDescription = null,
+                tint = StatusColors.Cobalt,
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }
@@ -860,51 +935,55 @@ private fun ConnectionGlassCard(
                     showRing = false,
                 )
 
-                // Contact Info & Relationship Meta
-                Column(modifier = Modifier.weight(1f)) {
+                // Contact Info & Relationship Meta: Name -> Last Contacted -> Category
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.5.dp)
+                ) {
+                    // 1. Name
                     Text(
                         text = radar.person.displayName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0F172A),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(2.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        radar.category?.let { cat ->
-                            Box(
-                                modifier = Modifier
-                                    .background(Color(0xFFE2E8F0).copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = cat.name.uppercase(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF475569),
-                                    letterSpacing = 0.4.sp,
-                                    maxLines = 1,
-                                )
-                            }
+
+                    // 2. Last Contacted (Between Name and Category)
+                    Text(
+                        text = radar.lastEffortAt?.let { Format.ago(it) } ?: "Never reached out",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF64748B),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+
+                    // 3. Category Badge Pill
+                    radar.category?.let { cat ->
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFE2E8F0).copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = cat.name.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF475569),
+                                letterSpacing = 0.4.sp,
+                                maxLines = 1
+                            )
                         }
-                        Text(
-                            text = radar.lastEffortAt?.let { Format.ago(it) } ?: "Never reached out",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF64748B),
-                            maxLines = 1,
-                        )
                     }
                 }
 
                 // Sleek Tactile Quick-Connect Action & Signal Strength Indicator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Cell Phone Signal Strength Indicator with clean status
                     Column(
@@ -913,16 +992,17 @@ private fun ConnectionGlassCard(
                     ) {
                         SignalBars(
                             status = radar.status,
-                            maxHeight = 14.dp,
+                            maxHeight = 13.dp,
                             barWidth = 3.dp,
                             spacing = 2.dp,
                         )
                         Text(
                             text = StatusColors.label(radar.status),
                             style = MaterialTheme.typography.labelSmall,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             color = StatusColors.accent(radar.status),
                             fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
                         )
                     }
 
@@ -1166,7 +1246,8 @@ fun OrbitFaceItem(
     radar: PersonRadar,
     onClick: () -> Unit,
 ) {
-    val firstName = radar.person.displayName.trim().split("\\s+".toRegex()).firstOrNull() ?: radar.person.displayName
+    val rawName = radar.person.displayName.trim()
+    val firstName = if (rawName.length <= 11) rawName else (rawName.split("\\s+".toRegex()).firstOrNull() ?: rawName)
     val needsLove = radar.status.needsAttention
 
     val infiniteTransition = rememberInfiniteTransition(label = "orbit_story_${radar.person.id}")
