@@ -479,34 +479,33 @@ fun NewPeopleScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(Modifier.height(3.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            item.category?.let { cat ->
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color(0xFFE2E8F0).copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = cat.name.uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF475569),
-                                        letterSpacing = 0.4.sp,
-                                        maxLines = 1
-                                    )
-                                }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = item.lastEffortAt?.let { com.relationshipradar.app.ui.Format.ago(it) } ?: "Never reached out",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF64748B),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        item.category?.let { cat ->
+                            Spacer(Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFFE2E8F0).copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = cat.name.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF475569),
+                                    letterSpacing = 0.4.sp,
+                                    maxLines = 1
+                                )
                             }
-                            Text(
-                                text = item.lastEffortAt?.let { com.relationshipradar.app.ui.Format.ago(it) } ?: "Never reached out",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF64748B),
-                                maxLines = 1
-                            )
                         }
                     }
 
