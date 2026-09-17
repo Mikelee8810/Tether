@@ -1,5 +1,7 @@
 # RelationshipRadar Implementation Plan
 
+> **Next-wave product work:** See [`docs/tether-product-evolution-roadmap.md`](tether-product-evolution-roadmap.md) for the approved roadmap covering voice memory capture, contextual follow-ups, Today's Tethers, Orbit constellation mapping, richer relationship briefs/call overlay, actionable widgets, and ADHD Rescue Mode.
+
 ## Phase 1 — Android Foundation
 - Native Android app (Kotlin + Jetpack Compose)
 - Local-first encrypted storage
