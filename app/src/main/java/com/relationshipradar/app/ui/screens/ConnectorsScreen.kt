@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,7 +66,7 @@ import com.relationshipradar.app.ui.theme.StatusColors
  * Designed with Apple Liquid Glass aesthetic, ambient status pills, and zero harsh boundaries.
  */
 @Composable
-fun ConnectorsScreen(vm: RadarViewModel) {
+fun ConnectorsScreen(vm: RadarViewModel, onOpenCallInsights: () -> Unit = {}) {
     val ctx = LocalContext.current
     val cursors by vm.cursors.collectAsStateWithLifecycle()
     var callsGranted by remember { mutableStateOf(vm.hasPermission(Manifest.permission.READ_CALL_LOG)) }
@@ -181,6 +182,24 @@ fun ConnectorsScreen(vm: RadarViewModel) {
                     onToggle = { vm.setConnectorEnabled("calls", it) },
                     onGrant = { callsLauncher.launch(Manifest.permission.READ_CALL_LOG) },
                 )
+            }
+
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(22.dp), elevation = 6.dp)
+                        .clickable(onClick = onOpenCallInsights).padding(18.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(StatusColors.Cobalt.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Call, contentDescription = null, tint = StatusColors.Cobalt)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("Call Recorder insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                            Text("Transcribe a recording privately and review what’s worth remembering.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                        }
+                        Text("Open", color = StatusColors.Cobalt, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             // ---- SMS Messages ---------------------------------------------------------------
@@ -524,4 +543,3 @@ private fun LuxurySourceCard(
         }
     }
 }
-

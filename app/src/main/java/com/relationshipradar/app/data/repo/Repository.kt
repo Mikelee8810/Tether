@@ -3,6 +3,8 @@ package com.relationshipradar.app.data.repo
 import com.relationshipradar.app.data.db.AppDatabase
 import com.relationshipradar.app.data.db.BuiltInCategories
 import com.relationshipradar.app.data.db.Category
+import com.relationshipradar.app.data.db.CallInsight
+import com.relationshipradar.app.data.db.CallInsightDecision
 import com.relationshipradar.app.data.db.ConnectorCursor
 import com.relationshipradar.app.data.db.PendingIdentity
 import com.relationshipradar.app.data.db.ContactIdentifier
@@ -17,6 +19,8 @@ import com.relationshipradar.app.engine.ReminderEngine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.util.UUID
+import java.time.LocalDate
+import java.time.ZoneId
 
 /** Single entry point for the UI, workers, and connectors. */
 class Repository(private val db: AppDatabase) {
@@ -163,4 +167,57 @@ class Repository(private val db: AppDatabase) {
 
     /** Loose name match used only to *suggest*, never to auto-merge. */
     suspend fun suggestPersonByName(name: String): Person? = people.findByName(name.trim())
+
+    // ---- Reviewed call insights -----------------------------------------------------------
+
+    fun observeAcceptedCallInsights(personId: Long) = db.callInsightDao().observeAcceptedForPerson(personId)
+    fun observeUpcomingCallInsights(from: Long = System.currentTimeMillis()) = db.callInsightDao().observeUpcoming(from)
+    suspend fun callInsightsForPerson(personId: Long) = db.callInsightDao().forPerson(personId)
+    suspend fun dueCallFollowUps(now: Long = System.currentTimeMillis()) = db.callInsightDao().dueFollowUps(now)
+    suspend fun markCallFollowUpNotified(id: Long, at: Long = System.currentTimeMillis()) = db.callInsightDao().markNotified(id, at)
+
+    /** Saves one explicit review decision. The recording/candidate key makes repeated imports safe. */
+    suspend fun acceptCallInsight(
+        personId: Long,
+        sourceRecordingId: String,
+        candidateId: String,
+        type: String,
+        text: String,
+        sourceExcerpt: String,
+        sourceStartMillis: Long,
+        suggestedDate: LocalDate?,
+    ): Long = db.callInsightDao().insert(
+        CallInsight(
+            personId = personId,
+            sourceRecordingId = sourceRecordingId,
+            candidateId = candidateId,
+            type = type,
+            decision = CallInsightDecision.ACCEPTED,
+            text = text.trim(),
+            sourceExcerpt = sourceExcerpt,
+            sourceStartMillis = sourceStartMillis,
+            scheduledAt = suggestedDate?.atStartOfDay(ZoneId.systemDefault())?.toInstant()?.toEpochMilli(),
+        ),
+    )
+
+    suspend fun dismissCallInsight(
+        personId: Long,
+        sourceRecordingId: String,
+        candidateId: String,
+        type: String,
+        text: String,
+        sourceExcerpt: String,
+        sourceStartMillis: Long,
+    ): Long = db.callInsightDao().insert(
+        CallInsight(
+            personId = personId,
+            sourceRecordingId = sourceRecordingId,
+            candidateId = candidateId,
+            type = type,
+            decision = CallInsightDecision.DISMISSED,
+            text = text,
+            sourceExcerpt = sourceExcerpt,
+            sourceStartMillis = sourceStartMillis,
+        ),
+    )
 }

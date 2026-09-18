@@ -48,6 +48,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
         individual.forEach { Notifications.postIndividual(applicationContext, it) }
         Notifications.postRoundup(applicationContext, roundup)
+        CallInsightReminderDelivery.deliverDue(applicationContext, now)
         app.settings.markReminderRun(now)
         com.relationshipradar.app.widget.RadarWidget.refresh(applicationContext)
         return Result.success()

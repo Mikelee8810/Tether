@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.relationshipradar.app.MainActivity
 import com.relationshipradar.app.R
 import com.relationshipradar.app.engine.PersonRadar
+import com.relationshipradar.app.data.db.CallInsight
 
 /**
  * Three levels, per the alert-design rule: urgent (individual), attention (roundup),
@@ -21,6 +22,7 @@ import com.relationshipradar.app.engine.PersonRadar
 object Notifications {
     const val CHANNEL_INDIVIDUAL = "individual"
     const val CHANNEL_ROUNDUP = "roundup"
+    const val CHANNEL_CALL_INSIGHTS = "call_insights"
     private const val ROUNDUP_ID = 1
     private const val INDIVIDUAL_BASE = 1000
 
@@ -34,6 +36,11 @@ object Notifications {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ROUNDUP, "Daily roundup", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "One quiet summary of everyone who is due"
+            },
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_CALL_INSIGHTS, "Call follow-ups", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Follow-ups you explicitly saved from a call"
             },
         )
     }
@@ -89,5 +96,19 @@ object Notifications {
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(ROUNDUP_ID, n)
+    }
+
+    fun postCallFollowUp(context: Context, insight: CallInsight, personName: String): Boolean {
+        if (!canPost(context)) return false
+        val notification = NotificationCompat.Builder(context, CHANNEL_CALL_INSIGHTS)
+            .setSmallIcon(R.drawable.ic_radar)
+            .setContentTitle("Follow up with $personName")
+            .setContentText(insight.text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(insight.text))
+            .setContentIntent(openApp(context, insight.personId))
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(20_000 + insight.id.toInt(), notification)
+        return true
     }
 }

@@ -1,5 +1,6 @@
 package com.relationshipradar.app.ui.screens
 
+import android.animation.ValueAnimator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -13,6 +14,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,15 +45,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import com.relationshipradar.app.data.repo.AppSettings
+import com.relationshipradar.app.data.db.CallInsight
 import com.relationshipradar.app.ui.QuickReachOutGlassSheet
 import com.relationshipradar.app.ui.gamification.CelebrationParticleOverlay
 import com.relationshipradar.app.ui.gamification.OrbitStarlightBanner
+import com.relationshipradar.app.ui.gamification.GamificationSystem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,6 +94,7 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.automirrored.rounded.Message
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -125,12 +131,19 @@ fun DashboardScreen(
     val uncategorized by vm.uncategorized.collectAsStateWithLifecycle()
     val pending by vm.pendingIdentities.collectAsStateWithLifecycle()
     val appSettings by vm.appSettings.collectAsStateWithLifecycle()
+    val upcomingCallInsights by vm.upcomingCallInsights.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(Filter.ATTENTION) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showAddPersonDialog by remember { mutableStateOf(false) }
     var reachOutTarget by remember { mutableStateOf<PersonRadar?>(null) }
     var celebrationTrigger by remember { mutableStateOf<Long?>(null) }
     var sparkIndex by rememberSaveable { mutableIntStateOf(0) }
+    val motionEnabled = remember { ValueAnimator.areAnimatorsEnabled() }
+    var dashboardRevealed by remember { mutableStateOf(!motionEnabled) }
+
+    LaunchedEffect(motionEnabled) {
+        dashboardRevealed = true
+    }
 
     val attention = radar.filter { it.status.needsAttention }
     val sparkCandidates = if (attention.isNotEmpty()) attention else radar
@@ -185,35 +198,6 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Sparks Counter Pill (1-tap shortcut to Orbit Constellation)
-                    Box(
-                        modifier = Modifier
-                            .liquidGlass(
-                                shape = RoundedCornerShape(14.dp),
-                                elevation = 3.dp,
-                                surfaceAlphaTop = 0.88f,
-                                surfaceAlphaBottom = 0.60f,
-                                tintColor = Color(0xFFFFFBEB)
-                            )
-                            .clickable { onOpenNewPeople() }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text("✨", fontSize = 12.sp)
-                            Text(
-                                text = "${appSettings.orbitSparks}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFFD97706),
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
                     // + Track Person
                     Box(
                         modifier = Modifier
@@ -270,62 +254,52 @@ fun DashboardScreen(
             }
         }
 
-        // ---- Instant Search Bar --------------------------------------------------------
-        item(key = "search_bar") {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .liquidGlass(
-                        shape = RoundedCornerShape(16.dp),
-                        elevation = 4.dp,
-                        surfaceAlphaTop = 0.88f,
-                        surfaceAlphaBottom = 0.60f,
-                    )
-                    .padding(horizontal = 14.dp, vertical = 4.dp)
+        item(key = "motivation_loop") {
+            AnimatedVisibility(
+                visible = dashboardRevealed,
+                enter = fadeIn(tween(420, delayMillis = 70)) +
+                    slideInVertically(tween(420, delayMillis = 70, easing = FastOutSlowInEasing)) { it / 5 },
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                MotivationProgressCard(
+                    sparks = appSettings.orbitSparks,
+                    weeklyCount = appSettings.weeklyConnectionsCount,
+                    onOpenProgress = onOpenNewPeople,
+                    animateProgress = motionEnabled,
+                )
+            }
+        }
+
+        // Today's action is the visual anchor of the screen.
+        if (activeCandidate != null) {
+            item(key = "daily_spark_hero") {
+                AnimatedVisibility(
+                    visible = dashboardRevealed,
+                    enter = fadeIn(tween(480, delayMillis = 150)) +
+                        slideInVertically(tween(480, delayMillis = 150, easing = FastOutSlowInEasing)) { it / 4 },
                 ) {
-                    Icon(
-                        Icons.Rounded.Search,
-                        contentDescription = "Search",
-                        tint = Color(0xFF64748B),
-                        modifier = Modifier.size(20.dp)
+                    TodaySparkHeroCard(
+                        candidate = activeCandidate,
+                        canShuffle = sparkCandidates.size > 1,
+                        onShuffle = { sparkIndex++ },
+                        onOpenPerson = onOpenPerson,
+                        onReachOut = { reachOutTarget = it }
                     )
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(vertical = 10.dp),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = Color(0xFF0F172A),
-                            fontWeight = FontWeight.Medium
-                        ),
-                        decorationBox = { innerTextField ->
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    "Search people, categories, topics...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                            innerTextField()
-                        }
+                }
+            }
+        }
+
+        if (upcomingCallInsights.isNotEmpty()) {
+            item(key = "upcoming_call_followups") {
+                AnimatedVisibility(
+                    visible = dashboardRevealed,
+                    enter = fadeIn(tween(460, delayMillis = 210)) +
+                        slideInVertically(tween(460, delayMillis = 210, easing = FastOutSlowInEasing)) { it / 5 },
+                ) {
+                    UpcomingCallFollowUpsCard(
+                        insights = upcomingCallInsights.take(3),
+                        namesByPersonId = radar.associate { it.person.id to it.person.displayName },
+                        onOpenPerson = onOpenPerson,
                     )
-                    if (searchQuery.isNotEmpty()) {
-                        Icon(
-                            Icons.Rounded.Close,
-                            contentDescription = "Clear",
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clickable { searchQuery = "" }
-                        )
-                    }
                 }
             }
         }
@@ -369,19 +343,6 @@ fun DashboardScreen(
             }
         }
 
-        // ---- Daily Spark Hero Card (Spacious, Warm, Elevated) -----------------------
-        if (activeCandidate != null) {
-            item(key = "daily_spark_hero") {
-                TodaySparkHeroCard(
-                    candidate = activeCandidate,
-                    canShuffle = sparkCandidates.size > 1,
-                    onShuffle = { sparkIndex++ },
-                    onOpenPerson = onOpenPerson,
-                    onReachOut = { reachOutTarget = it }
-                )
-            }
-        }
-
         // ---- Uncategorized / Unmatched Contacts Banner ------------------------------
         if (uncategorized.isNotEmpty() || pending.isNotEmpty()) {
             item(key = "unorganized_banner") {
@@ -402,6 +363,66 @@ fun DashboardScreen(
                 currentFilter = filter,
                 onFilterSelected = { filter = it }
             )
+        }
+
+        // Search belongs with the directory it filters, after the primary relationship actions.
+        item(key = "search_bar") {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .liquidGlass(
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = 3.dp,
+                        surfaceAlphaTop = 0.82f,
+                        surfaceAlphaBottom = 0.54f,
+                    )
+                    .padding(horizontal = 14.dp, vertical = 3.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Search,
+                        contentDescription = "Search",
+                        tint = Color(0xFF64748B),
+                        modifier = Modifier.size(19.dp)
+                    )
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 9.dp),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF0F172A),
+                            fontWeight = FontWeight.Medium
+                        ),
+                        decorationBox = { innerTextField ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    "Search this orbit",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                    if (searchQuery.isNotEmpty()) {
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "Clear",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clickable { searchQuery = "" }
+                        )
+                    }
+                }
+            }
         }
 
             // ---- Empty State --------------------------------------------------------------------
@@ -522,6 +543,70 @@ fun DashboardScreen(
 }
 }
 
+@Composable
+private fun UpcomingCallFollowUpsCard(
+    insights: List<CallInsight>,
+    namesByPersonId: Map<Long, String>,
+    onOpenPerson: (Long) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                shape = RoundedCornerShape(22.dp),
+                elevation = 7.dp,
+                surfaceAlphaTop = .86f,
+                surfaceAlphaBottom = .54f,
+                tintColor = Color(0xFFEFF6FF),
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier.size(30.dp).clip(CircleShape).background(StatusColors.Cobalt.copy(alpha = .12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Schedule, contentDescription = null, tint = StatusColors.Cobalt, modifier = Modifier.size(17.dp))
+                }
+                Column {
+                    Text("COMING UP", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color(0xFF475569), letterSpacing = .8.sp)
+                    Text("Promises worth keeping", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                }
+            }
+            Text("${insights.size}", style = MaterialTheme.typography.labelLarge, color = StatusColors.Cobalt, fontWeight = FontWeight.Black)
+        }
+
+        insights.forEachIndexed { index, insight ->
+            if (index > 0) HorizontalDivider(color = Color.White.copy(alpha = .72f))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpenPerson(insight.personId) }.padding(vertical = 5.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        namesByPersonId[insight.personId] ?: "Someone in your orbit",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = StatusColors.Cobalt,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(insight.text, style = MaterialTheme.typography.bodyLarge, color = Color(0xFF0F172A), fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    insight.scheduledAt?.let { Text(Format.date(it), style = MaterialTheme.typography.labelSmall, color = StatusColors.Flame, fontWeight = FontWeight.Bold) }
+                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Open person", tint = Color(0xFF94A3B8), modifier = Modifier.size(17.dp))
+                }
+            }
+        }
+    }
+}
+
 private fun rank(s: RadarStatus) = when (s) {
     RadarStatus.VERY_OVERDUE -> 6
     RadarStatus.OVERDUE -> 5
@@ -530,6 +615,126 @@ private fun rank(s: RadarStatus) = when (s) {
     RadarStatus.SNOOZED -> 2
     RadarStatus.PAUSED -> 1
     RadarStatus.TRACK_ONLY -> 0
+}
+
+/**
+ * One compact motivational surface. Sparks, weekly consistency, level progress, and current
+ * relationship pressure live together so they read as one game loop instead of four widgets.
+ */
+@Composable
+private fun MotivationProgressCard(
+    sparks: Int,
+    weeklyCount: Int,
+    onOpenProgress: () -> Unit,
+    animateProgress: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val orbitProgress = GamificationSystem.progressFor(sparks)
+    val level = orbitProgress.currentLevel
+    val progress = orbitProgress.fraction
+    val displayedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = if (animateProgress) tween(720, delayMillis = 240, easing = FastOutSlowInEasing) else tween(0),
+        label = "orbit progress",
+    )
+    val nextLabel = orbitProgress.supportingLabel
+    val shape = RoundedCornerShape(24.dp)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                shape = shape,
+                elevation = 6.dp,
+                surfaceAlphaTop = 0.84f,
+                surfaceAlphaBottom = 0.56f,
+                specularAlphaTop = 0.96f,
+                specularAlphaBottom = 0.22f,
+            )
+            .clickable(onClick = onOpenProgress)
+            .padding(horizontal = 17.dp, vertical = 14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "${level.badgeIcon} ${level.title}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF0F172A),
+                    )
+                    Text(
+                        text = nextLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF64748B),
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MotivationStat(icon = "🔥", value = weeklyCount.toString(), label = "connections")
+                    MotivationStat(icon = "✨", value = sparks.toString(), label = "Sparks")
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.58f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(displayedProgress)
+                        .height(7.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(StatusColors.Cobalt, Color(0xFF7C3AED), Color(0xFFF59E0B))
+                            )
+                        ),
+                )
+            }
+
+        }
+    }
+}
+
+@Composable
+private fun MotivationStat(
+    icon: String,
+    value: String,
+    label: String,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(icon, fontSize = 13.sp)
+        Column {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF0F172A),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF64748B),
+            )
+        }
+    }
 }
 
 /** Dedicated, elevated Today's Spark hero card with spacious layout and zero crowding. */
@@ -1202,35 +1407,24 @@ fun TetherBrandMark(
             }
         }
 
-        // Brand Typography & Living Status Capsule
-        Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "Tether",
-                    fontFamily = EditorialSerif,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF0F172A),
-                    letterSpacing = (-0.5).sp,
-                )
-                // Pulse dot
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .clip(RoundedCornerShape(3.5.dp))
-                        .background(if (attentionCount > 0) StatusColors.Flame else StatusColors.Emerald)
-                )
-            }
+        // Brand typography with one quiet health signal; urgency is explained lower in context.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Text(
-                text = if (attentionCount > 0) "$attentionCount to reconnect" else "all close in orbit",
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (attentionCount > 0) StatusColors.Flame else Color(0xFF64748B),
-                letterSpacing = 0.4.sp,
+                text = "Tether",
+                fontFamily = EditorialSerif,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color(0xFF0F172A),
+                letterSpacing = (-0.5).sp,
+            )
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(RoundedCornerShape(3.5.dp))
+                    .background(if (attentionCount > 0) StatusColors.Flame else StatusColors.Emerald)
             )
         }
     }
@@ -1352,4 +1546,3 @@ fun OrbitFaceItem(
         )
     }
 }
-

@@ -132,12 +132,9 @@ fun OrbitStarlightBanner(
     onOpenGamification: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val level = GamificationSystem.getLevelForSparks(sparks)
-    val nextLevel = GamificationSystem.LEVELS.getOrNull(level.level)
-    val progressInLevel = if (nextLevel != null) {
-        val range = (nextLevel.minSparks - level.minSparks).coerceAtLeast(1)
-        ((sparks - level.minSparks).toFloat() / range.toFloat()).coerceIn(0f, 1f)
-    } else 1f
+    val orbitProgress = GamificationSystem.progressFor(sparks)
+    val level = orbitProgress.currentLevel
+    val progressInLevel = orbitProgress.fraction
 
     val infiniteTransition = rememberInfiniteTransition(label = "starlight_shimmer")
     val shimmerTranslate by infiniteTransition.animateFloat(

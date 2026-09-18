@@ -1,5 +1,9 @@
 package com.relationshipradar.app.ui.screens
 
+import android.animation.ValueAnimator
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,12 +79,15 @@ fun NewPeopleScreen(
 
     val sparks = settings.orbitSparks
     val weeklyCount = settings.weeklyConnectionsCount
-    val level = GamificationSystem.getLevelForSparks(sparks)
-    val nextLevel = GamificationSystem.LEVELS.getOrNull(level.level)
-    val progressInLevel = if (nextLevel != null) {
-        val range = (nextLevel.minSparks - level.minSparks).coerceAtLeast(1)
-        ((sparks - level.minSparks).toFloat() / range.toFloat()).coerceIn(0f, 1f)
-    } else 1f
+    val orbitProgress = GamificationSystem.progressFor(sparks)
+    val level = orbitProgress.currentLevel
+    val nextLevel = orbitProgress.nextLevel
+    val motionEnabled = remember { ValueAnimator.areAnimatorsEnabled() }
+    val progressInLevel by animateFloatAsState(
+        targetValue = orbitProgress.fraction,
+        animationSpec = if (motionEnabled) tween(780, delayMillis = 180, easing = FastOutSlowInEasing) else tween(0),
+        label = "orbit level progress",
+    )
 
     val contactsWithCustomAvatar = radarList.count { it.person.avatar != null }
     val innerCircleTotal = radarList.count { it.category?.name?.contains("inner", ignoreCase = true) == true }
@@ -203,7 +210,7 @@ fun NewPeopleScreen(
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = "🔥 $weeklyCount this week",
+                                    text = if (weeklyCount == 1) "🔥 1 connection" else "🔥 $weeklyCount connections",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -220,7 +227,7 @@ fun NewPeopleScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (nextLevel != null) "Next: ${nextLevel.title}" else "Highest Rank Reached",
+                                text = nextLevel?.let { "Next: ${it.title}" } ?: "Highest orbit reached",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 11.5.sp,
                                 color = Color(0xFF64748B),
@@ -607,5 +614,3 @@ private fun MilestoneBadgeCard(milestone: Milestone) {
         }
     }
 }
-
-

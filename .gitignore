@@ -8,3 +8,7 @@
 /captures/
 .externalNativeBuild/
 .cxx/
+/work/
+/third_party/whisper.cpp/.gradle/
+/third_party/whisper.cpp/**/build/
+/third_party/whisper.cpp/**/.cxx/

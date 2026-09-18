@@ -190,3 +190,24 @@ interface PendingIdentityDao {
     @Delete
     suspend fun delete(p: PendingIdentity)
 }
+
+@Dao
+interface CallInsightDao {
+    @Query("SELECT * FROM call_insights WHERE personId = :personId AND decision = 'ACCEPTED' ORDER BY COALESCE(scheduledAt, createdAt) DESC")
+    fun observeAcceptedForPerson(personId: Long): Flow<List<CallInsight>>
+
+    @Query("SELECT * FROM call_insights WHERE personId = :personId ORDER BY createdAt DESC")
+    suspend fun forPerson(personId: Long): List<CallInsight>
+
+    @Query("SELECT * FROM call_insights WHERE decision = 'ACCEPTED' AND scheduledAt IS NOT NULL AND scheduledAt >= :from ORDER BY scheduledAt")
+    fun observeUpcoming(from: Long): Flow<List<CallInsight>>
+
+    @Query("SELECT * FROM call_insights WHERE decision = 'ACCEPTED' AND type = 'FOLLOW_UP' AND scheduledAt IS NOT NULL AND scheduledAt <= :now AND notifiedAt IS NULL ORDER BY scheduledAt")
+    suspend fun dueFollowUps(now: Long): List<CallInsight>
+
+    @Query("UPDATE call_insights SET notifiedAt = :notifiedAt WHERE id = :id AND notifiedAt IS NULL")
+    suspend fun markNotified(id: Long, notifiedAt: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(insight: CallInsight): Long
+}

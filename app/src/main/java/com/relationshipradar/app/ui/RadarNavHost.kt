@@ -70,6 +70,7 @@ import com.relationshipradar.app.ui.screens.PersonSettingsScreen
 import com.relationshipradar.app.ui.screens.QuickLogScreen
 import com.relationshipradar.app.ui.screens.SettingsScreen
 import com.relationshipradar.app.ui.screens.WhoIsThisScreen
+import com.relationshipradar.app.ui.callinsights.CallRecordingInsightsScreen
 
 object Routes {
     const val RADAR = "radar"
@@ -79,6 +80,7 @@ object Routes {
     const val CONNECTORS = "connectors"
     const val WHO = "who"
     const val HEALTH = "health"
+    const val CALL_INSIGHTS = "call_insights"
     const val PERSON = "person/{id}"
     const val PERSON_SETTINGS = "person/{id}/settings"
     const val LOG = "log?personId={personId}"
@@ -118,6 +120,7 @@ fun RadarNavHost(vm: RadarViewModel, openPersonId: Long?, openLog: Boolean = fal
         route == Routes.CONNECTORS -> "Auto-Sync"
         route == Routes.WHO -> "Who is this?"
         route == Routes.HEALTH -> "Health"
+        route == Routes.CALL_INSIGHTS -> "Call insights"
         route.startsWith("log") -> "Log a moment"
         else -> ""
     }
@@ -329,7 +332,10 @@ fun RadarNavHost(vm: RadarViewModel, openPersonId: Long?, openLog: Boolean = fal
                         HealthScreen(vm)
                     }
                     composable(Routes.CONNECTORS) {
-                        ConnectorsScreen(vm)
+                        ConnectorsScreen(vm) { nav.navigate(Routes.CALL_INSIGHTS) }
+                    }
+                    composable(Routes.CALL_INSIGHTS) {
+                        CallRecordingInsightsScreen(vm)
                     }
                     composable(Routes.WHO) {
                         WhoIsThisScreen(vm)

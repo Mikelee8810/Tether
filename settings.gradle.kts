@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "RelationshipRadar"
 include(":app")
+include(":whispercpp")
+project(":whispercpp").projectDir = file("third_party/whisper.cpp/examples/whisper.android/lib")

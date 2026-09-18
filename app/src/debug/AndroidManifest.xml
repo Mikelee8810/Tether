@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".ui.callinsights.InsightReviewDemoActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ui.callinsights.PersonCallMemoriesDemoActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ui.callinsights.DashboardCallFollowUpsDemoActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ui.callinsights.CallRecordingInsightsDemoActivity"
+            android:exported="true" />
+        <receiver
+            android:name=".connectors.callrecorder.CallRecorderBridgeProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.relationshipradar.app.debug.PROBE_CALL_RECORDER" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".connectors.callrecorder.AudioDecoderProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.relationshipradar.app.debug.PROBE_AUDIO_DECODER" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".connectors.callrecorder.WhisperTranscriptionProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.relationshipradar.app.debug.PROBE_WHISPER" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".connectors.callrecorder.CallInsightPersistenceProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.relationshipradar.app.debug.PROBE_INSIGHT_STORE" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".connectors.callrecorder.CallInsightNotificationProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.relationshipradar.app.debug.PROBE_INSIGHT_NOTIFICATION" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

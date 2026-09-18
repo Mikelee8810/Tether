@@ -19,6 +19,8 @@ enum class InteractionType {
 
 enum class Direction { OUTGOING, INCOMING_ANSWERED, INCOMING_IGNORED }
 
+enum class CallInsightDecision { ACCEPTED, DISMISSED }
+
 @Entity(tableName = "categories")
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -166,4 +168,34 @@ data class PendingIdentity(
     val suggestedPersonId: Long? = null,
     /** User said "not a person I track" — stop asking. */
     val ignored: Boolean = false,
+)
+
+/** A user-reviewed possibility extracted from a Call Recorder transcript. */
+@Entity(
+    tableName = "call_insights",
+    foreignKeys = [ForeignKey(
+        entity = Person::class,
+        parentColumns = ["id"],
+        childColumns = ["personId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [
+        Index("personId"),
+        Index("scheduledAt"),
+        Index(value = ["sourceRecordingId", "candidateId"], unique = true),
+    ],
+)
+data class CallInsight(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val personId: Long,
+    val sourceRecordingId: String,
+    val candidateId: String,
+    val type: String,
+    val decision: CallInsightDecision,
+    val text: String,
+    val sourceExcerpt: String,
+    val sourceStartMillis: Long,
+    val scheduledAt: Long? = null,
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val notifiedAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
 )

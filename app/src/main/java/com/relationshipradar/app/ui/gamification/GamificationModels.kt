@@ -8,6 +8,18 @@ data class OrbitLevel(
     val badgeIcon: String,
 )
 
+data class OrbitProgress(
+    val currentLevel: OrbitLevel,
+    val nextLevel: OrbitLevel?,
+    val fraction: Float,
+    val sparksToNextLevel: Int,
+) {
+    val isComplete: Boolean get() = nextLevel == null
+
+    val supportingLabel: String
+        get() = if (isComplete) "Top orbit reached" else "$sparksToNextLevel Sparks to the next orbit"
+}
+
 object GamificationSystem {
     val LEVELS = listOf(
         OrbitLevel(1, "Starlight Pioneer", 0, 49, "✨"),
@@ -19,6 +31,25 @@ object GamificationSystem {
 
     fun getLevelForSparks(sparks: Int): OrbitLevel {
         return LEVELS.lastOrNull { sparks >= it.minSparks } ?: LEVELS.first()
+    }
+
+    fun progressFor(sparks: Int): OrbitProgress {
+        val safeSparks = sparks.coerceAtLeast(0)
+        val current = getLevelForSparks(safeSparks)
+        val next = LEVELS.firstOrNull { it.level == current.level + 1 }
+        val range = next?.let { (it.minSparks - current.minSparks).coerceAtLeast(1) }
+        val fraction = if (range == null) {
+            1f
+        } else {
+            ((safeSparks - current.minSparks).toFloat() / range.toFloat()).coerceIn(0f, 1f)
+        }
+
+        return OrbitProgress(
+            currentLevel = current,
+            nextLevel = next,
+            fraction = fraction,
+            sparksToNextLevel = next?.let { (it.minSparks - safeSparks).coerceAtLeast(0) } ?: 0,
+        )
     }
 }
 
@@ -91,4 +122,3 @@ object OrbitMilestones {
         )
     }
 }
-

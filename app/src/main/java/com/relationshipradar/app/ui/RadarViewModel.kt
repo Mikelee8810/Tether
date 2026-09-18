@@ -39,10 +39,12 @@ class RadarViewModel(app: Application) : AndroidViewModel(app) {
     val appSettings = settings.flow.state(com.relationshipradar.app.data.repo.AppSettings())
     val cursors = repo.observeCursors().state(emptyList())
     val pendingIdentities = repo.observePendingIdentities().state(emptyList())
+    val upcomingCallInsights = repo.observeUpcomingCallInsights().state(emptyList())
 
     fun person(id: Long) = repo.observePerson(id)
     fun interactions(id: Long) = repo.observeInteractions(id)
     fun identifiers(id: Long) = repo.observeIdentifiers(id)
+    fun callInsights(id: Long) = repo.observeAcceptedCallInsights(id)
 
     private fun statusRank(s: RadarStatus) = when (s) {
         RadarStatus.VERY_OVERDUE -> 6; RadarStatus.OVERDUE -> 5; RadarStatus.DUE_SOON -> 4

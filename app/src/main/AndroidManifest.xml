@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Phase 2 connectors -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
@@ -12,6 +13,11 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="com.kitsumed.shizucallrecorder.permission.READ_RECORDINGS" />
+
+    <queries>
+        <provider android:authorities="com.kitsumed.shizucallrecorder.recordings" />
+    </queries>
 
     <application
         android:name=".RadarApp"

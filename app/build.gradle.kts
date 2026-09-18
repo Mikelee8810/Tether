@@ -43,6 +43,7 @@ ksp {
 }
 
 dependencies {
+    implementation(project(":whispercpp"))
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
     implementation(platform(libs.compose.bom))

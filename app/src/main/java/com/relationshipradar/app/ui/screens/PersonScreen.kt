@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import com.relationshipradar.app.data.db.ContactIdentifier
+import com.relationshipradar.app.data.db.CallInsight
 import com.relationshipradar.app.data.db.IdentifierType
 import com.relationshipradar.app.service.CallOverlayService
 import androidx.compose.animation.core.Spring
@@ -112,6 +113,7 @@ import com.relationshipradar.app.ui.SignalBars
 import com.relationshipradar.app.ui.StatusChip
 import com.relationshipradar.app.ui.liquidGlass
 import com.relationshipradar.app.ui.theme.StatusColors
+import com.relationshipradar.app.connectors.callrecorder.formatTranscriptTimestamp
 import java.time.ZoneId
 
 enum class PersonTab(val label: String, val icon: String) {
@@ -132,6 +134,7 @@ fun PersonScreen(
     val pwc by vm.person(personId).collectAsStateWithLifecycle(null)
     val interactions by vm.interactions(personId).collectAsStateWithLifecycle(emptyList())
     val identifiers by vm.identifiers(personId).collectAsStateWithLifecycle(emptyList())
+    val callInsights by vm.callInsights(personId).collectAsStateWithLifecycle(emptyList())
     val categories by vm.categories.collectAsStateWithLifecycle()
     val appSettings by vm.appSettings.collectAsStateWithLifecycle()
     val person = pwc?.person ?: return
@@ -516,6 +519,11 @@ fun PersonScreen(
                         }
 
                         PersonTab.NOTES -> {
+                            if (callInsights.isNotEmpty()) {
+                                item {
+                                    CallMemoriesSection(callInsights)
+                                }
+                            }
                             // Atomic Individual Notes List with Add & Delete
                             item {
                                 ContactNotesSection(
@@ -688,6 +696,63 @@ fun PersonScreen(
             }
         }
         "avatar" -> AvatarPicker(person.avatar, person.contactLookupKey != null, onPick = { vm.updatePerson(person.copy(avatar = it)); dialog = null }, onDismiss = { dialog = null })
+    }
+}
+
+@Composable
+private fun CallMemoriesSection(insights: List<CallInsight>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionHeader("Remembered from calls")
+        insights.forEach { insight ->
+            val tint = when (insight.type) {
+                "FOLLOW_UP" -> Color(0xFFEFF6FF)
+                "UPCOMING_DATE" -> Color(0xFFFFF7ED)
+                "LITTLE_THING" -> Color(0xFFFDF2F8)
+                else -> Color(0xFFF5F3FF)
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .liquidGlass(
+                        shape = RoundedCornerShape(18.dp),
+                        elevation = 5.dp,
+                        surfaceAlphaTop = .88f,
+                        surfaceAlphaBottom = .58f,
+                        tintColor = tint,
+                    )
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        insight.type.lowercase().replace('_', ' ').uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = StatusColors.Cobalt,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = .7.sp,
+                    )
+                    insight.scheduledAt?.let {
+                        Text(Format.date(it), style = MaterialTheme.typography.labelSmall, color = StatusColors.Flame, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Text(insight.text, style = MaterialTheme.typography.titleMedium, color = Color(0xFF0F172A), fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "From the call · ${formatTranscriptTimestamp(insight.sourceStartMillis)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64748B),
+                )
+                Text(
+                    "“${insight.sourceExcerpt}”",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF64748B),
+                    lineHeight = 17.sp,
+                )
+            }
+        }
     }
 }
 
