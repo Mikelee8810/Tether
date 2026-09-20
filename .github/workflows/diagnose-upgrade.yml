@@ -1,0 +1,116 @@
+name: Diagnose v4 to v6 upgrade crash
+
+on:
+  push:
+    branches: ['diagnostic/startup-crash-v0.1.0']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout pre-crash v4 app
+        uses: actions/checkout@v4
+        with:
+          ref: 7597de9a69c47d28ccbdeb432eea615e59be05b0
+          path: old
+
+      - name: Checkout current diagnostic app
+        uses: actions/checkout@v4
+        with:
+          ref: diagnostic/startup-crash-v0.1.0
+          path: current
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build old v4 debug APK
+        working-directory: old
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Add x86_64 Whisper ABI to current build
+        working-directory: current
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('third_party/whisper.cpp/examples/whisper.android/lib/build.gradle')
+          s = p.read_text()
+          old = "abiFilters 'arm64-v8a'"
+          new = "abiFilters 'arm64-v8a', 'x86_64'"
+          if old not in s:
+              raise SystemExit('Expected ABI filter not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Build current v6 debug APK
+        working-directory: current
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Locate APKs
+        run: |
+          OLD_APK="$(find "$GITHUB_WORKSPACE/old/app/build/outputs/apk/debug" -name '*.apk' | head -1)"
+          CURRENT_APK="$(find "$GITHUB_WORKSPACE/current/app/build/outputs/apk/debug" -name '*.apk' | head -1)"
+          test -f "$OLD_APK"
+          test -f "$CURRENT_APK"
+          echo "OLD_APK=$OLD_APK" >> "$GITHUB_ENV"
+          echo "CURRENT_APK=$CURRENT_APK" >> "$GITHUB_ENV"
+          ls -lh "$OLD_APK" "$CURRENT_APK"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Reproduce upgrade and capture crash
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-boot-timeout: 600
+          disable-animations: true
+          script: |
+            set +e
+            echo '=== install pre-crash v4 app ==='
+            adb install -r "$OLD_APK"
+            OLD_INSTALL=$?
+            adb logcat -c
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity
+            OLD_START=$?
+            sleep 8
+            OLD_PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
+            echo "old_install=$OLD_INSTALL old_start=$OLD_START old_pid=$OLD_PID"
+            echo '=== old app database files ==='
+            adb shell run-as com.relationshipradar.app ls -l databases 2>&1 || true
+            adb shell am force-stop com.relationshipradar.app
+
+            echo '=== install current v6 over v4 without clearing data ==='
+            adb install -r "$CURRENT_APK"
+            CURRENT_INSTALL=$?
+            adb logcat -c
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/current-start.txt"
+            CURRENT_START=${PIPESTATUS[0]}
+            sleep 8
+            CURRENT_PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
+            echo "current_install=$CURRENT_INSTALL current_start=$CURRENT_START current_pid=$CURRENT_PID"
+            echo '=== CRASH BUFFER ==='
+            adb logcat -d -b crash -v threadtime || true
+            echo '=== AndroidRuntime ==='
+            adb logcat -d -v threadtime AndroidRuntime:E '*:S' || true
+            echo '=== Room / process lines ==='
+            adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app|Room|Migration|IllegalStateException|SQLite|SecurityException|UnsatisfiedLinkError' | tail -n 1000 || true
+
+            if [ "$OLD_INSTALL" -ne 0 ] || [ "$OLD_START" -ne 0 ] || [ -z "$OLD_PID" ]; then exit 10; fi
+            if [ "$CURRENT_INSTALL" -ne 0 ]; then exit 11; fi
+            if [ -z "$CURRENT_PID" ]; then exit 12; fi
+            exit "$CURRENT_START"
