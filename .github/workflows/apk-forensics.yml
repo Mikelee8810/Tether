@@ -1,0 +1,58 @@
+name: APK forensics
+
+on:
+  push:
+    branches: ['diagnostic/apk-forensics-v0.1.0']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TETHER_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/tether-release.jks"
+          test -s "$RUNNER_TEMP/tether-release.jks"
+
+      - name: Build exact ARM64 release
+        env:
+          TETHER_KEYSTORE_FILE: ${{ runner.temp }}/tether-release.jks
+          TETHER_KEYSTORE_PASSWORD: ${{ secrets.TETHER_KEYSTORE_PASSWORD }}
+          TETHER_VERSION_NAME: 0.1.0
+          TETHER_VERSION_CODE: 100
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Inspect release APK
+        run: |
+          set -e
+          APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
+          echo "APK=$APK"
+          ls -lh "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          READELF="$(find "$ANDROID_HOME/ndk" -type f -name llvm-readelf | head -1)"
+          echo '=== SIGNER ==='
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          echo '=== ZIP 16K ALIGNMENT ==='
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          echo '=== NATIVE LIBS ==='
+          unzip -l "$APK" | grep -E 'lib/.+\.so$' || true
+          rm -rf "$RUNNER_TEMP/native" && mkdir -p "$RUNNER_TEMP/native"
+          unzip -q "$APK" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/native"
+          echo '=== ELF LOAD + RELRO ==='
+          for so in "$RUNNER_TEMP"/native/lib/arm64-v8a/*.so; do
+            echo "--- $(basename "$so")"
+            "$READELF" -lW "$so" | grep -E 'LOAD|GNU_RELRO' || true
+          done
