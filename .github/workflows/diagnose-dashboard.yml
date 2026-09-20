@@ -1,0 +1,93 @@
+name: Diagnose dashboard startup crash
+
+on:
+  push:
+    branches: ['diagnostic/startup-crash-v0.1.0']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diagnostic/startup-crash-v0.1.0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Force dashboard path and x86_64 only for diagnostic
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          nav = Path('app/src/main/java/com/relationshipradar/app/ui/RadarNavHost.kt')
+          s = nav.read_text()
+          old = 'if (!settings.onboardingDone && !onboardingSeen) {'
+          new = 'if (false && !settings.onboardingDone && !onboardingSeen) {'
+          if old not in s:
+              raise SystemExit('Onboarding gate not found')
+          nav.write_text(s.replace(old, new, 1))
+
+          p = Path('third_party/whisper.cpp/examples/whisper.android/lib/build.gradle')
+          s = p.read_text()
+          old = "abiFilters 'arm64-v8a'"
+          new = "abiFilters 'arm64-v8a', 'x86_64'"
+          if old not in s:
+              raise SystemExit('Expected Whisper ABI filter not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Build dashboard diagnostic APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Locate APK
+        run: |
+          APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -1)"
+          test -f "$APK"
+          echo "APK=$GITHUB_WORKSPACE/$APK" >> "$GITHUB_ENV"
+          ls -lh "$APK"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch dashboard and capture crash
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-boot-timeout: 600
+          disable-animations: true
+          script: |
+            set +e
+            adb install -r "$APK"
+            INSTALL=$?
+            adb logcat -c
+            adb shell am force-stop com.relationshipradar.app
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/dashboard-start.txt"
+            START=${PIPESTATUS[0]}
+            sleep 10
+            PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
+            echo "install=$INSTALL start=$START pid=$PID"
+            echo '=== CRASH BUFFER ==='
+            adb logcat -d -b crash -v threadtime || true
+            echo '=== AndroidRuntime ==='
+            adb logcat -d -v threadtime AndroidRuntime:E '*:S' || true
+            echo '=== Tether / Room / native lines ==='
+            adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Room|Migration|SQLite|IllegalStateException|SecurityException|UnsatisfiedLinkError|whisper|ggml' | tail -n 1200 || true
+            if [ "$INSTALL" -ne 0 ]; then exit 2; fi
+            if [ -z "$PID" ]; then exit 3; fi
+            exit "$START"
