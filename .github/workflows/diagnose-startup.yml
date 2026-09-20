@@ -94,7 +94,7 @@ jobs:
             adb logcat -c
             adb shell am force-stop com.relationshipradar.app
             adb shell am start -W -n com.relationshipradar.app/.MainActivity
-            sleep 15
+            sleep 10
             PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
             echo "pid=$PID"
             echo '=== CRASH BUFFER ==='
