@@ -1,4 +1,4 @@
-name: Diagnose populated-device startup
+name: Diagnose missing-contact-photo crash
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Force dashboard path and x86_64 only for diagnostic
+      - name: Inject one imported contact with no photo
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -37,6 +37,20 @@ jobs:
               raise SystemExit('Onboarding gate not found')
           nav.write_text(s.replace(old, new, 1))
 
+          app = Path('app/src/main/java/com/relationshipradar/app/RadarApp.kt')
+          s = app.read_text()
+          old = 'scope.launch { repo.seedCategoriesIfEmpty() }'
+          new = '''scope.launch {
+            repo.seedCategoriesIfEmpty()
+            val diagnosticId = repo.createPerson("Photo-less contact")
+            repo.getPerson(diagnosticId)?.let {
+                repo.updatePerson(it.copy(avatar = "photo", contactLookupKey = "diagnostic-missing-contact"))
+            }
+        }'''
+          if old not in s:
+              raise SystemExit('RadarApp seed hook not found')
+          app.write_text(s.replace(old, new, 1))
+
           p = Path('third_party/whisper.cpp/examples/whisper.android/lib/build.gradle')
           s = p.read_text()
           old = "abiFilters 'arm64-v8a'"
@@ -46,7 +60,7 @@ jobs:
           p.write_text(s.replace(old, new, 1))
           PY
 
-      - name: Build populated-device diagnostic APK
+      - name: Build diagnostic APK
         run: ./gradlew --no-daemon :app:assembleDebug
 
       - name: Locate APK
@@ -62,7 +76,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Seed provider history, grant permissions, launch, and capture crash
+      - name: Launch dashboard and capture missing-photo failure
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 35
@@ -72,4 +86,4 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
-            bash -lc 'set +e; PAGE="$(adb shell getconf PAGE_SIZE | tr -d "\r")"; echo "page_size=$PAGE"; adb install -r "$APK" > "$RUNNER_TEMP/populated-install.txt" 2>&1; INSTALL=$?; cat "$RUNNER_TEMP/populated-install.txt"; echo "install_exit=$INSTALL"; for P in android.permission.READ_CALL_LOG android.permission.READ_SMS android.permission.READ_CALENDAR android.permission.READ_CONTACTS; do adb shell pm grant com.relationshipradar.app "$P" 2>&1 || true; done; echo "=== seed call log ==="; NOW=$(date +%s000); adb shell "i=1; while [ \$i -le 750 ]; do n=21255\$(printf %05d \$i); d=\$(( $NOW - i*60000 )); content insert --uri content://call_log/calls --bind number:s:\$n --bind type:i:2 --bind date:l:\$d --bind duration:l:60 >/dev/null 2>&1 || exit 41; i=\$((i+1)); done"; CALLSEED=$?; echo "call_seed_exit=$CALLSEED"; echo "=== seed SMS ==="; adb shell "i=1; while [ \$i -le 750 ]; do n=64655\$(printf %05d \$i); d=\$(( $NOW - i*90000 )); content insert --uri content://sms/sent --bind address:s:\$n --bind date:l:\$d --bind type:i:2 --bind body:s:x >/dev/null 2>&1 || exit 42; i=\$((i+1)); done"; SMSSEED=$?; echo "sms_seed_exit=$SMSSEED"; echo "=== provider samples ==="; adb shell content query --uri content://call_log/calls --projection _id:number:date --sort "date DESC" 2>&1 | head -5 || true; adb shell content query --uri content://sms --projection _id:address:date:type --sort "date DESC" 2>&1 | head -5 || true; adb logcat -c; adb shell am force-stop com.relationshipradar.app; adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/populated-start.txt" 2>&1; START=$?; cat "$RUNNER_TEMP/populated-start.txt"; sleep 25; PID="$(adb shell pidof com.relationshipradar.app | tr -d "\r")"; echo "install=$INSTALL start=$START pid=$PID call_seed=$CALLSEED sms_seed=$SMSSEED"; echo "=== CRASH BUFFER ==="; adb logcat -d -b crash -v threadtime || true; echo "=== AndroidRuntime ==="; adb logcat -d -v threadtime AndroidRuntime:E "*:S" || true; echo "=== Tether / provider / worker lines ==="; adb logcat -d -v threadtime | grep -E "relationshipradar|FATAL EXCEPTION|AndroidRuntime|Room|Migration|SQLite|IllegalStateException|SecurityException|UnsatisfiedLinkError|WM-WorkerWrapper|ScanWorker|call_log|sms" | tail -n 1600 || true; if [ "$INSTALL" -ne 0 ]; then exit 2; fi; if [ -z "$PID" ]; then exit 3; fi; exit "$START"'
+            bash -lc 'set +e; PAGE="$(adb shell getconf PAGE_SIZE | tr -d "\r")"; echo "page_size=$PAGE"; adb install -r "$APK" > "$RUNNER_TEMP/photo-install.txt" 2>&1; INSTALL=$?; cat "$RUNNER_TEMP/photo-install.txt"; adb shell pm grant com.relationshipradar.app android.permission.READ_CONTACTS 2>&1 || true; adb logcat -c; adb shell am force-stop com.relationshipradar.app; adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/photo-start.txt" 2>&1; START=$?; cat "$RUNNER_TEMP/photo-start.txt"; sleep 15; PID="$(adb shell pidof com.relationshipradar.app | tr -d "\r")"; echo "install=$INSTALL start=$START pid=$PID"; echo "=== CRASH BUFFER ==="; adb logcat -d -b crash -v threadtime || true; echo "=== AndroidRuntime ==="; adb logcat -d -v threadtime AndroidRuntime:E "*:S" || true; echo "=== Contact photo / Tether lines ==="; adb logcat -d -v threadtime | grep -E "relationshipradar|FATAL EXCEPTION|AndroidRuntime|ConcurrentHashMap|NullPointerException|ContactPhotos|produceState|Coroutine|Room|SQLite" | tail -n 1400 || true; if [ "$INSTALL" -ne 0 ]; then exit 2; fi; if [ -z "$PID" ]; then exit 3; fi; exit "$START"'
