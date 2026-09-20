@@ -51,7 +51,7 @@ jobs:
           TETHER_VERSION_CODE: 101
         run: ./gradlew --no-daemon :app:assembleRelease
 
-      - name: Inspect APK and native alignment
+      - name: Inspect APK and native ZIP alignment
         run: |
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
           test -n "$APK"
@@ -63,6 +63,34 @@ jobs:
           ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
           echo "=== 16 KB ZIP alignment ==="
           "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+
+      - name: Inspect ARM64 ELF LOAD alignment
+        run: |
+          OUT="$RUNNER_TEMP/tether-apk"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          unzip -q "$APK" -d "$OUT"
+          OBJDUMP="$(find "$ANDROID_HOME/ndk" -type f -path '*/bin/llvm-objdump' | sort -V | tail -1)"
+          test -x "$OBJDUMP"
+          echo "Using $OBJDUMP"
+          test -d "$OUT/lib/arm64-v8a"
+          FAIL=0
+          while IFS= read -r SO; do
+            REL="${SO#$OUT/}"
+            echo "=== $REL ==="
+            LOADS="$("$OBJDUMP" -p "$SO" | grep 'LOAD' || true)"
+            printf '%s\n' "$LOADS"
+            if [ -z "$LOADS" ]; then
+              echo "::error file=$REL::No ELF LOAD segments found"
+              FAIL=1
+            elif printf '%s\n' "$LOADS" | grep -Eq 'align 2\*\*([0-9]|1[0-3])([^0-9]|$)'; then
+              echo "::error file=$REL::ELF LOAD segment is below 16 KB alignment"
+              FAIL=1
+            else
+              echo "ALIGNED: $REL"
+            fi
+          done < <(find "$OUT/lib/arm64-v8a" -type f -name '*.so' | sort)
+          exit "$FAIL"
 
       - name: Enable KVM
         run: |
