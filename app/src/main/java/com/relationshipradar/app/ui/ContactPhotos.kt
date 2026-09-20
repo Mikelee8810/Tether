@@ -6,7 +6,6 @@ import android.net.Uri
 import android.provider.ContactsContract
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -17,12 +16,13 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Loads contact photos off the main thread and keeps them in memory for the session. */
 object ContactPhotos {
-    private val cache = ConcurrentHashMap<String, ImageBitmap?>()
+    private val cache = ConcurrentHashMap<String, ImageBitmap>()
+    private val missing = ConcurrentHashMap.newKeySet<String>()
 
     suspend fun load(context: Context, lookupKey: String, preferHiRes: Boolean): ImageBitmap? {
         val key = "$lookupKey:$preferHiRes"
         cache[key]?.let { return it }
-        if (cache.containsKey(key)) return null
+        if (missing.contains(key)) return null
         val bmp = withContext(Dispatchers.IO) {
             try {
                 val lookupUri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_LOOKUP_URI, lookupKey)
@@ -30,7 +30,7 @@ object ContactPhotos {
                 ContactsContract.Contacts.openContactPhotoInputStream(context.contentResolver, contactUri, preferHiRes)?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
             } catch (_: Throwable) { null }
         }
-        cache[key] = bmp
+        if (bmp != null) cache[key] = bmp else missing.add(key)
         return bmp
     }
 
