@@ -82,11 +82,13 @@ jobs:
           script: |
             set +e
             echo '=== install pre-crash v4 app ==='
-            adb install -r "$OLD_APK"
+            adb install -r "$OLD_APK" > "$RUNNER_TEMP/old-install.txt" 2>&1
             OLD_INSTALL=$?
+            cat "$RUNNER_TEMP/old-install.txt"
             adb logcat -c
-            adb shell am start -W -n com.relationshipradar.app/.MainActivity
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/old-start.txt" 2>&1
             OLD_START=$?
+            cat "$RUNNER_TEMP/old-start.txt"
             sleep 8
             OLD_PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
             echo "old_install=$OLD_INSTALL old_start=$OLD_START old_pid=$OLD_PID"
@@ -95,11 +97,13 @@ jobs:
             adb shell am force-stop com.relationshipradar.app
 
             echo '=== install current v6 over v4 without clearing data ==='
-            adb install -r "$CURRENT_APK"
+            adb install -r "$CURRENT_APK" > "$RUNNER_TEMP/current-install.txt" 2>&1
             CURRENT_INSTALL=$?
+            cat "$RUNNER_TEMP/current-install.txt"
             adb logcat -c
-            adb shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/current-start.txt"
-            CURRENT_START=${PIPESTATUS[0]}
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/current-start.txt" 2>&1
+            CURRENT_START=$?
+            cat "$RUNNER_TEMP/current-start.txt"
             sleep 8
             CURRENT_PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
             echo "current_install=$CURRENT_INSTALL current_start=$CURRENT_START current_pid=$CURRENT_PID"
