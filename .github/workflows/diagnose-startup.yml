@@ -89,15 +89,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
-            set +e
-            adb wait-for-device
-            sleep 8
-            INSTALL=1
-            for i in 1 2 3; do
-              adb install -r "$APK" && INSTALL=0 && break
-              sleep 5
-            done
-            if [ "$INSTALL" -ne 0 ]; then exit 2; fi
+            adb install -r "$APK"
             adb shell pm grant com.relationshipradar.app android.permission.READ_CONTACTS 2>/dev/null || true
             adb logcat -c
             adb shell am force-stop com.relationshipradar.app
@@ -109,4 +101,4 @@ jobs:
             adb logcat -d -b crash -v threadtime || true
             echo '=== CONTACT PHOTO LINES ==='
             adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|NullPointerException|ConcurrentHashMap|ContactPhotos|produceState' | tail -n 1200 || true
-            if [ -z "$PID" ]; then exit 3; fi
+            test -n "$PID"
