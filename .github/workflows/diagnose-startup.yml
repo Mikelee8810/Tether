@@ -55,7 +55,7 @@ jobs:
         run: |
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
           test -n "$APK"
-          echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "APK=$GITHUB_WORKSPACE/$APK" >> "$GITHUB_ENV"
           echo "=== APK ==="
           ls -lh "$APK"
           echo "=== Native ABIs ==="
@@ -98,35 +98,14 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Launch Tether and capture crash
+      - name: Launch Tether on 16 KB Android and capture crash
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          api-level: 36
-          target: google_apis
+          api-level: 35
+          target: google_apis_ps16k
           arch: x86_64
           profile: pixel_7_pro
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
-            set +e
-            adb install -r "$APK" > "$RUNNER_TEMP/install.txt" 2>&1
-            INSTALL=$?
-            cat "$RUNNER_TEMP/install.txt"
-            echo "install_exit=$INSTALL"
-            adb logcat -c
-            adb shell am force-stop com.relationshipradar.app
-            adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/am-start.txt" 2>&1
-            START=$?
-            cat "$RUNNER_TEMP/am-start.txt"
-            sleep 8
-            PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
-            echo "pid=$PID"
-            echo "=== CRASH BUFFER ==="
-            adb logcat -d -b crash -v threadtime || true
-            echo "=== AndroidRuntime ==="
-            adb logcat -d -v threadtime AndroidRuntime:E '*:S' || true
-            echo "=== Tether process lines ==="
-            adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app|UnsatisfiedLinkError|Room|IllegalStateException|SecurityException' | tail -n 800 || true
-            if [ "$INSTALL" -ne 0 ]; then exit 2; fi
-            if [ -z "$PID" ]; then exit 3; fi
-            exit "$START"
+            bash -lc 'set +e; PAGE="$(adb shell getconf PAGE_SIZE | tr -d "\r")"; echo "page_size=$PAGE"; if [ "$PAGE" != "16384" ]; then echo "Expected 16384 byte page size"; exit 4; fi; adb install -r "$APK" > "$RUNNER_TEMP/install.txt" 2>&1; INSTALL=$?; cat "$RUNNER_TEMP/install.txt"; echo "install_exit=$INSTALL"; adb logcat -c; adb shell am force-stop com.relationshipradar.app; adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/am-start.txt" 2>&1; START=$?; cat "$RUNNER_TEMP/am-start.txt"; sleep 10; PID="$(adb shell pidof com.relationshipradar.app | tr -d "\r")"; echo "pid=$PID"; echo "=== CRASH BUFFER ==="; adb logcat -d -b crash -v threadtime || true; echo "=== AndroidRuntime ==="; adb logcat -d -v threadtime AndroidRuntime:E "*:S" || true; echo "=== Tether process lines ==="; adb logcat -d -v threadtime | grep -E "relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app|UnsatisfiedLinkError|Room|IllegalStateException|SecurityException|SIGSEGV|SIGBUS|linker|graphics.path" | tail -n 1000 || true; if [ "$INSTALL" -ne 0 ]; then exit 2; fi; if [ -z "$PID" ]; then exit 3; fi; exit "$START"'
