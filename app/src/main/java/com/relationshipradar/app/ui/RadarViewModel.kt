@@ -80,9 +80,11 @@ class RadarViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteCategory(c: Category) = viewModelScope.launch { repo.deleteCategory(c) }
 
     fun syncContacts(onDone: (String) -> Unit) = viewModelScope.launch {
-        val r = contacts.sync()
-        settings.setLastSync(System.currentTimeMillis())
-        onDone("Imported ${r.created} new, updated ${r.updated}, archived ${r.archived}")
+        val message = runContactSyncSafely(
+            sync = contacts::sync,
+            markSynced = { settings.setLastSync(System.currentTimeMillis()) },
+        )
+        onDone(message)
     }
 
     fun setRoundupHour(h: Int) = viewModelScope.launch { settings.setRoundupHour(h); ReminderScheduler.ensureScheduled(getApplication(), h) }
