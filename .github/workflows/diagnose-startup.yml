@@ -65,12 +65,16 @@ jobs:
           "$ZIPALIGN" -c -P 16 -v 4 "$APK"
           rm -rf "$RUNNER_TEMP/native" && mkdir -p "$RUNNER_TEMP/native"
           unzip -q "$APK" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/native"
-          READELF="$(find "$ANDROID_HOME/ndk" -type f -name llvm-readelf | head -1)"
+          READELF="$(find "$ANDROID_HOME/ndk" -name llvm-readelf -print -quit)"
           echo "=== ARM64 ELF LOAD alignment ==="
-          for so in "$RUNNER_TEMP"/native/lib/arm64-v8a/*.so; do
-            echo "--- $so"
-            "$READELF" -lW "$so" | grep LOAD || true
-          done
+          if [ -n "$READELF" ]; then
+            for so in "$RUNNER_TEMP"/native/lib/arm64-v8a/*.so; do
+              echo "--- $so"
+              "$READELF" -lW "$so" | grep LOAD || true
+            done
+          else
+            echo 'llvm-readelf not found; ZIP alignment check already passed.'
+          fi
 
       - name: Install Android 16 emulator image
         run: |
@@ -86,38 +90,41 @@ jobs:
 
       - name: Boot emulator
         run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          test -x "$ADB"
           nohup "$ANDROID_HOME/emulator/emulator" \
             -avd tether_startup -no-window -no-audio -no-snapshot -no-boot-anim \
             -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          adb wait-for-device
+          "$ADB" wait-for-device
           for i in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+            if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               break
             fi
             sleep 2
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
-          adb shell input keyevent 82 || true
+          test "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = "1"
+          "$ADB" shell input keyevent 82 || true
 
       - name: Launch Tether and capture crash
         run: |
           set +e
-          adb install -r "$APK"
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          "$ADB" install -r "$APK"
           INSTALL=$?
           echo "install_exit=$INSTALL"
-          adb logcat -c
-          adb shell am force-stop com.relationshipradar.app
-          adb shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/am-start.txt"
+          "$ADB" logcat -c
+          "$ADB" shell am force-stop com.relationshipradar.app
+          "$ADB" shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/am-start.txt"
           START=$?
           sleep 6
-          PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
+          PID="$("$ADB" shell pidof com.relationshipradar.app | tr -d '\r')"
           echo "pid=$PID"
           echo "=== CRASH BUFFER ==="
-          adb logcat -d -b crash -v threadtime || true
+          "$ADB" logcat -d -b crash -v threadtime || true
           echo "=== AndroidRuntime ==="
-          adb logcat -d -v threadtime AndroidRuntime:E '*:S' || true
+          "$ADB" logcat -d -v threadtime AndroidRuntime:E '*:S' || true
           echo "=== Tether process lines ==="
-          adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app' | tail -n 500 || true
+          "$ADB" logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app' | tail -n 500 || true
           echo "=== Emulator tail ==="
           tail -n 200 "$RUNNER_TEMP/emulator.log" || true
           if [ "$INSTALL" -ne 0 ] || [ -z "$PID" ]; then
