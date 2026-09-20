@@ -4,6 +4,11 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val tetherVersionName = providers.environmentVariable("TETHER_VERSION_NAME").orNull ?: "0.1.0"
+val tetherVersionCode = providers.environmentVariable("TETHER_VERSION_CODE").orNull?.toIntOrNull() ?: 1
+val tetherKeystoreFile = providers.environmentVariable("TETHER_KEYSTORE_FILE").orNull
+val tetherKeystorePassword = providers.environmentVariable("TETHER_KEYSTORE_PASSWORD").orNull
+
 android {
     namespace = "com.relationshipradar.app"
     compileSdk = 37
@@ -12,13 +17,25 @@ android {
         applicationId = "com.relationshipradar.app"
         minSdk = 31
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = tetherVersionCode
+        versionName = tetherVersionName
+    }
+
+    val tetherReleaseSigning = if (tetherKeystoreFile != null && tetherKeystorePassword != null) {
+        signingConfigs.create("tetherRelease") {
+            storeFile = file(tetherKeystoreFile)
+            storePassword = tetherKeystorePassword
+            keyAlias = "tether"
+            keyPassword = tetherKeystorePassword
+        }
+    } else {
+        null
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            tetherReleaseSigning?.let { signingConfig = it }
         }
     }
 
