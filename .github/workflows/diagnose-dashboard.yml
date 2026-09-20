@@ -73,12 +73,14 @@ jobs:
           disable-animations: true
           script: |
             set +e
-            adb install -r "$APK"
+            adb install -r "$APK" > "$RUNNER_TEMP/dashboard-install.txt" 2>&1
             INSTALL=$?
+            cat "$RUNNER_TEMP/dashboard-install.txt"
             adb logcat -c
             adb shell am force-stop com.relationshipradar.app
-            adb shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/dashboard-start.txt"
-            START=${PIPESTATUS[0]}
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/dashboard-start.txt" 2>&1
+            START=$?
+            cat "$RUNNER_TEMP/dashboard-start.txt"
             sleep 10
             PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
             echo "install=$INSTALL start=$START pid=$PID"
