@@ -63,71 +63,40 @@ jobs:
           ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
           echo "=== 16 KB ZIP alignment ==="
           "$ZIPALIGN" -c -P 16 -v 4 "$APK"
-          rm -rf "$RUNNER_TEMP/native" && mkdir -p "$RUNNER_TEMP/native"
-          unzip -q "$APK" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/native"
-          READELF="$(find "$ANDROID_HOME/ndk" -name llvm-readelf -print -quit)"
-          echo "=== ARM64 ELF LOAD alignment ==="
-          if [ -n "$READELF" ]; then
-            for so in "$RUNNER_TEMP"/native/lib/arm64-v8a/*.so; do
-              echo "--- $so"
-              "$READELF" -lW "$so" | grep LOAD || true
-            done
-          else
-            echo 'llvm-readelf not found; ZIP alignment check already passed.'
-          fi
 
-      - name: Install Android 16 emulator image
+      - name: Enable KVM
         run: |
-          sudo chmod 666 /dev/kvm || true
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            'platform-tools' \
-            'emulator' \
-            'system-images;android-36;google_apis;x86_64'
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
-            --force --name tether_startup \
-            --package 'system-images;android-36;google_apis;x86_64'
-
-      - name: Boot emulator
-        run: |
-          ADB="$ANDROID_HOME/platform-tools/adb"
-          test -x "$ADB"
-          nohup "$ANDROID_HOME/emulator/emulator" \
-            -avd tether_startup -no-window -no-audio -no-snapshot -no-boot-anim \
-            -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          "$ADB" wait-for-device
-          for i in $(seq 1 120); do
-            if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
-              break
-            fi
-            sleep 2
-          done
-          test "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = "1"
-          "$ADB" shell input keyevent 82 || true
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Launch Tether and capture crash
-        run: |
-          set +e
-          ADB="$ANDROID_HOME/platform-tools/adb"
-          "$ADB" install -r "$APK"
-          INSTALL=$?
-          echo "install_exit=$INSTALL"
-          "$ADB" logcat -c
-          "$ADB" shell am force-stop com.relationshipradar.app
-          "$ADB" shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/am-start.txt"
-          START=$?
-          sleep 6
-          PID="$("$ADB" shell pidof com.relationshipradar.app | tr -d '\r')"
-          echo "pid=$PID"
-          echo "=== CRASH BUFFER ==="
-          "$ADB" logcat -d -b crash -v threadtime || true
-          echo "=== AndroidRuntime ==="
-          "$ADB" logcat -d -v threadtime AndroidRuntime:E '*:S' || true
-          echo "=== Tether process lines ==="
-          "$ADB" logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app' | tail -n 500 || true
-          echo "=== Emulator tail ==="
-          tail -n 200 "$RUNNER_TEMP/emulator.log" || true
-          if [ "$INSTALL" -ne 0 ] || [ -z "$PID" ]; then
-            exit 1
-          fi
-          exit "$START"
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-boot-timeout: 600
+          disable-animations: true
+          script: |
+            set +e
+            adb install -r "$APK" | tee "$RUNNER_TEMP/install.txt"
+            INSTALL=${PIPESTATUS[0]}
+            echo "install_exit=$INSTALL"
+            adb logcat -c
+            adb shell am force-stop com.relationshipradar.app
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/am-start.txt"
+            START=${PIPESTATUS[0]}
+            sleep 8
+            PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
+            echo "pid=$PID"
+            echo "=== CRASH BUFFER ==="
+            adb logcat -d -b crash -v threadtime || true
+            echo "=== AndroidRuntime ==="
+            adb logcat -d -v threadtime AndroidRuntime:E '*:S' || true
+            echo "=== Tether process lines ==="
+            adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app|UnsatisfiedLinkError|Room|IllegalStateException|SecurityException' | tail -n 800 || true
+            if [ "$INSTALL" -ne 0 ]; then exit 2; fi
+            if [ -z "$PID" ]; then exit 3; fi
+            exit "$START"
