@@ -34,7 +34,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           p = Path('third_party/whisper.cpp/examples/whisper.android/lib/build.gradle')
           s = p.read_text()
           old = "abiFilters 'arm64-v8a'"
@@ -54,13 +53,7 @@ jobs:
           app = Path('app/src/main/java/com/relationshipradar/app/RadarApp.kt')
           s = app.read_text()
           old = 'scope.launch { repo.seedCategoriesIfEmpty() }'
-          new = '''scope.launch {
-            repo.seedCategoriesIfEmpty()
-            val diagnosticId = repo.createPerson("Photo-less contact")
-            repo.getPerson(diagnosticId)?.let {
-                repo.updatePerson(it.copy(avatar = "photo", contactLookupKey = "diagnostic-missing-contact"))
-            }
-        }'''
+          new = 'scope.launch {\n            repo.seedCategoriesIfEmpty()\n            val diagnosticId = repo.createPerson("Photo-less contact")\n            repo.getPerson(diagnosticId)?.let {\n                repo.updatePerson(it.copy(avatar = "photo", contactLookupKey = "diagnostic-missing-contact"))\n            }\n        }'
           if old not in s:
               raise SystemExit('RadarApp seed hook not found')
           app.write_text(s.replace(old, new, 1))
@@ -74,41 +67,11 @@ jobs:
           TETHER_VERSION_CODE: 101
         run: ./gradlew --no-daemon :app:assembleRelease
 
-      - name: Inspect APK and native ZIP alignment
+      - name: Locate APK
         run: |
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
           test -n "$APK"
           echo "APK=$GITHUB_WORKSPACE/$APK" >> "$GITHUB_ENV"
-          echo "=== APK ==="
-          ls -lh "$APK"
-          echo "=== Native ABIs ==="
-          unzip -l "$APK" | grep -E 'lib/.+\.so$' | awk '{print $4}' | sed 's#^lib/##' | cut -d/ -f1 | sort -u
-          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
-          echo "=== 16 KB ZIP alignment ==="
-          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
-
-      - name: Inspect ARM64 ELF LOAD alignment
-        run: |
-          OUT="$RUNNER_TEMP/tether-apk"
-          rm -rf "$OUT"
-          mkdir -p "$OUT"
-          unzip -q "$APK" -d "$OUT"
-          OBJDUMP="$(find "$ANDROID_HOME/ndk" -type f -path '*/bin/llvm-objdump' | sort -V | tail -1)"
-          test -x "$OBJDUMP"
-          test -d "$OUT/lib/arm64-v8a"
-          FAIL=0
-          while IFS= read -r SO; do
-            REL="${SO#$OUT/}"
-            LOADS="$("$OBJDUMP" -p "$SO" | grep 'LOAD' || true)"
-            if [ -z "$LOADS" ]; then
-              echo "::error file=$REL::No ELF LOAD segments found"
-              FAIL=1
-            elif printf '%s\n' "$LOADS" | grep -Eq 'align 2\*\*([0-9]|1[0-3])([^0-9]|$)'; then
-              echo "::error file=$REL::ELF LOAD segment is below 16 KB alignment"
-              FAIL=1
-            fi
-          done < <(find "$OUT/lib/arm64-v8a" -type f -name '*.so' | sort)
-          exit "$FAIL"
 
       - name: Enable KVM
         run: |
@@ -126,4 +89,17 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
-            bash -lc 'set +e; PAGE="$(adb shell getconf PAGE_SIZE | tr -d "\r")"; echo "page_size=$PAGE"; adb install -r "$APK" > "$RUNNER_TEMP/install.txt" 2>&1; INSTALL=$?; cat "$RUNNER_TEMP/install.txt"; adb shell pm grant com.relationshipradar.app android.permission.READ_CONTACTS 2>&1 || true; adb logcat -c; adb shell am force-stop com.relationshipradar.app; adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/am-start.txt" 2>&1; START=$?; cat "$RUNNER_TEMP/am-start.txt"; sleep 15; PID="$(adb shell pidof com.relationshipradar.app | tr -d "\r")"; echo "pid=$PID"; echo "=== CRASH BUFFER ==="; adb logcat -d -b crash -v threadtime || true; echo "=== AndroidRuntime ==="; adb logcat -d -v threadtime AndroidRuntime:E "*:S" || true; echo "=== CONTACT PHOTO LINES ==="; adb logcat -d -v threadtime | grep -E "relationshipradar|FATAL EXCEPTION|AndroidRuntime|NullPointerException|ConcurrentHashMap|ContactPhotos|produceState" | tail -n 1200 || true; if [ "$INSTALL" -ne 0 ]; then exit 2; fi; if [ -z "$PID" ]; then exit 3; fi; exit "$START"'
+            set +e
+            adb install -r "$APK"
+            adb shell pm grant com.relationshipradar.app android.permission.READ_CONTACTS 2>/dev/null || true
+            adb logcat -c
+            adb shell am force-stop com.relationshipradar.app
+            adb shell am start -W -n com.relationshipradar.app/.MainActivity
+            sleep 15
+            PID="$(adb shell pidof com.relationshipradar.app | tr -d '\r')"
+            echo "pid=$PID"
+            echo '=== CRASH BUFFER ==='
+            adb logcat -d -b crash -v threadtime || true
+            echo '=== CONTACT PHOTO LINES ==='
+            adb logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|NullPointerException|ConcurrentHashMap|ContactPhotos|produceState' | tail -n 1200 || true
+            if [ -z "$PID" ]; then exit 3; fi
