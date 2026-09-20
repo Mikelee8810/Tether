@@ -261,7 +261,11 @@ private fun PeopleCluster() {
     )
     androidx.compose.foundation.layout.FlowRow(
         Modifier.fillMaxWidth(0.9f), horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(14.dp), maxItemsInEachRow = 3,
-    ) { people.forEach { (id, n, s) -> Avatar(id, n, s, 88) } }
+    ) {
+        people.forEach { (id, n, s) ->
+            Box(Modifier.size(88.dp)) { Avatar(id, n, s, 88) }
+        }
+    }
 }
 
 /** Page 3: what a nudge looks like, rendered in-app so the ask isn't abstract. */
