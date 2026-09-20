@@ -82,15 +82,22 @@ jobs:
       - name: Launch dashboard with missing contact photo
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          api-level: 35
-          target: google_apis_ps16k
+          api-level: 36
+          target: google_apis
           arch: x86_64
           profile: pixel_7_pro
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
             set +e
-            adb install -r "$APK"
+            adb wait-for-device
+            sleep 8
+            INSTALL=1
+            for i in 1 2 3; do
+              adb install -r "$APK" && INSTALL=0 && break
+              sleep 5
+            done
+            if [ "$INSTALL" -ne 0 ]; then exit 2; fi
             adb shell pm grant com.relationshipradar.app android.permission.READ_CONTACTS 2>/dev/null || true
             adb logcat -c
             adb shell am force-stop com.relationshipradar.app
