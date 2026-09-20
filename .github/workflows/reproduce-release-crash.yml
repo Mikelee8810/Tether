@@ -1,0 +1,76 @@
+name: Reproduce published release crash
+
+on:
+  push:
+    branches: ['diagnostic/runtime-release-v0.1.0']
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact published APK
+        run: |
+          curl -fL --retry 3 \
+            -o "$RUNNER_TEMP/Tether-0.1.0.apk" \
+            'https://github.com/Mikelee8810/Tether/releases/download/v0.1.0/Tether-0.1.0.apk'
+          echo '2342f7df0bb3b0800838fd9940003e0c8cbefc88fe8af2209d68f028cceecbc9  '"$RUNNER_TEMP/Tether-0.1.0.apk" | sha256sum -c -
+
+      - name: Install Android 16 emulator image
+        run: |
+          sudo chmod 666 /dev/kvm || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'platform-tools' \
+            'emulator' \
+            'system-images;android-36;google_apis;x86_64'
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+            --force --name tether_release \
+            --package 'system-images;android-36;google_apis;x86_64'
+
+      - name: Boot emulator
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          test -x "$ADB"
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd tether_release -no-window -no-audio -no-snapshot -no-boot-anim \
+            -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          "$ADB" wait-for-device
+          for i in $(seq 1 120); do
+            if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1' ]; then
+              break
+            fi
+            sleep 2
+          done
+          test "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = '1'
+
+      - name: Install and launch exact release
+        run: |
+          set +e
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          APK="$RUNNER_TEMP/Tether-0.1.0.apk"
+          "$ADB" install -r "$APK" | tee "$RUNNER_TEMP/install.txt"
+          INSTALL=${PIPESTATUS[0]}
+          "$ADB" logcat -c
+          "$ADB" shell am force-stop com.relationshipradar.app
+          "$ADB" shell am start -W -n com.relationshipradar.app/.MainActivity | tee "$RUNNER_TEMP/start.txt"
+          START=${PIPESTATUS[0]}
+          sleep 8
+          PID="$("$ADB" shell pidof com.relationshipradar.app | tr -d '\r')"
+          echo "install_exit=$INSTALL start_exit=$START pid=$PID"
+          echo '=== crash buffer ==='
+          "$ADB" logcat -d -b crash -v threadtime || true
+          echo '=== AndroidRuntime ==='
+          "$ADB" logcat -d -v threadtime AndroidRuntime:E '*:S' || true
+          echo '=== process ==='
+          "$ADB" logcat -d -v threadtime | grep -E 'relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app|UnsatisfiedLinkError|Room|IllegalStateException' | tail -n 800 || true
+          echo '=== emulator ==='
+          tail -n 120 "$RUNNER_TEMP/emulator.log" || true
+          if [ "$INSTALL" -ne 0 ]; then exit 2; fi
+          if [ -z "$PID" ]; then exit 3; fi
+          exit "$START"
