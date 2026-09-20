@@ -30,10 +30,11 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/tether-release.jks"
           test -s "$RUNNER_TEMP/tether-release.jks"
 
-      - name: Add x86_64 only for emulator diagnostics
+      - name: Prepare missing-photo crash test
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('third_party/whisper.cpp/examples/whisper.android/lib/build.gradle')
           s = p.read_text()
           old = "abiFilters 'arm64-v8a'"
@@ -41,6 +42,28 @@ jobs:
           if old not in s:
               raise SystemExit('Expected ABI filter not found')
           p.write_text(s.replace(old, new, 1))
+
+          nav = Path('app/src/main/java/com/relationshipradar/app/ui/RadarNavHost.kt')
+          s = nav.read_text()
+          old = 'if (!settings.onboardingDone && !onboardingSeen) {'
+          new = 'if (false && !settings.onboardingDone && !onboardingSeen) {'
+          if old not in s:
+              raise SystemExit('Onboarding gate not found')
+          nav.write_text(s.replace(old, new, 1))
+
+          app = Path('app/src/main/java/com/relationshipradar/app/RadarApp.kt')
+          s = app.read_text()
+          old = 'scope.launch { repo.seedCategoriesIfEmpty() }'
+          new = '''scope.launch {
+            repo.seedCategoriesIfEmpty()
+            val diagnosticId = repo.createPerson("Photo-less contact")
+            repo.getPerson(diagnosticId)?.let {
+                repo.updatePerson(it.copy(avatar = "photo", contactLookupKey = "diagnostic-missing-contact"))
+            }
+        }'''
+          if old not in s:
+              raise SystemExit('RadarApp seed hook not found')
+          app.write_text(s.replace(old, new, 1))
           PY
 
       - name: Build signed diagnostic release
@@ -72,22 +95,17 @@ jobs:
           unzip -q "$APK" -d "$OUT"
           OBJDUMP="$(find "$ANDROID_HOME/ndk" -type f -path '*/bin/llvm-objdump' | sort -V | tail -1)"
           test -x "$OBJDUMP"
-          echo "Using $OBJDUMP"
           test -d "$OUT/lib/arm64-v8a"
           FAIL=0
           while IFS= read -r SO; do
             REL="${SO#$OUT/}"
-            echo "=== $REL ==="
             LOADS="$("$OBJDUMP" -p "$SO" | grep 'LOAD' || true)"
-            printf '%s\n' "$LOADS"
             if [ -z "$LOADS" ]; then
               echo "::error file=$REL::No ELF LOAD segments found"
               FAIL=1
             elif printf '%s\n' "$LOADS" | grep -Eq 'align 2\*\*([0-9]|1[0-3])([^0-9]|$)'; then
               echo "::error file=$REL::ELF LOAD segment is below 16 KB alignment"
               FAIL=1
-            else
-              echo "ALIGNED: $REL"
             fi
           done < <(find "$OUT/lib/arm64-v8a" -type f -name '*.so' | sort)
           exit "$FAIL"
@@ -98,7 +116,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Launch Tether on 16 KB Android and capture crash
+      - name: Launch dashboard with missing contact photo
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 35
@@ -108,4 +126,4 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
-            bash -lc 'set +e; PAGE="$(adb shell getconf PAGE_SIZE | tr -d "\r")"; echo "page_size=$PAGE"; if [ "$PAGE" != "16384" ]; then echo "Expected 16384 byte page size"; exit 4; fi; adb install -r "$APK" > "$RUNNER_TEMP/install.txt" 2>&1; INSTALL=$?; cat "$RUNNER_TEMP/install.txt"; echo "install_exit=$INSTALL"; adb logcat -c; adb shell am force-stop com.relationshipradar.app; adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/am-start.txt" 2>&1; START=$?; cat "$RUNNER_TEMP/am-start.txt"; sleep 10; PID="$(adb shell pidof com.relationshipradar.app | tr -d "\r")"; echo "pid=$PID"; echo "=== CRASH BUFFER ==="; adb logcat -d -b crash -v threadtime || true; echo "=== AndroidRuntime ==="; adb logcat -d -v threadtime AndroidRuntime:E "*:S" || true; echo "=== Tether process lines ==="; adb logcat -d -v threadtime | grep -E "relationshipradar|FATAL EXCEPTION|AndroidRuntime|Process: com.relationshipradar.app|UnsatisfiedLinkError|Room|IllegalStateException|SecurityException|SIGSEGV|SIGBUS|linker|graphics.path" | tail -n 1000 || true; if [ "$INSTALL" -ne 0 ]; then exit 2; fi; if [ -z "$PID" ]; then exit 3; fi; exit "$START"'
+            bash -lc 'set +e; PAGE="$(adb shell getconf PAGE_SIZE | tr -d "\r")"; echo "page_size=$PAGE"; adb install -r "$APK" > "$RUNNER_TEMP/install.txt" 2>&1; INSTALL=$?; cat "$RUNNER_TEMP/install.txt"; adb shell pm grant com.relationshipradar.app android.permission.READ_CONTACTS 2>&1 || true; adb logcat -c; adb shell am force-stop com.relationshipradar.app; adb shell am start -W -n com.relationshipradar.app/.MainActivity > "$RUNNER_TEMP/am-start.txt" 2>&1; START=$?; cat "$RUNNER_TEMP/am-start.txt"; sleep 15; PID="$(adb shell pidof com.relationshipradar.app | tr -d "\r")"; echo "pid=$PID"; echo "=== CRASH BUFFER ==="; adb logcat -d -b crash -v threadtime || true; echo "=== AndroidRuntime ==="; adb logcat -d -v threadtime AndroidRuntime:E "*:S" || true; echo "=== CONTACT PHOTO LINES ==="; adb logcat -d -v threadtime | grep -E "relationshipradar|FATAL EXCEPTION|AndroidRuntime|NullPointerException|ConcurrentHashMap|ContactPhotos|produceState" | tail -n 1200 || true; if [ "$INSTALL" -ne 0 ]; then exit 2; fi; if [ -z "$PID" ]; then exit 3; fi; exit "$START"'
