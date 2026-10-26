@@ -18,7 +18,8 @@ class WhisperTranscriptionProbeReceiver : BroadcastReceiver() {
                 }
                 val model = File(context.filesDir, "models/ggml-tiny.en.bin")
                 val transcript = runBlocking { LocalWhisperTranscriber().transcribe(pcm, model) }
-                Log.i(TAG, "success model=${transcript.modelName} durationMs=${transcript.audioDurationMillis} text=${transcript.text}")
+                // Never log transcript content; length only.
+                Log.i(TAG, "success model=${transcript.modelName} durationMs=${transcript.audioDurationMillis} chars=${transcript.text.length}")
             } catch (error: Throwable) {
                 Log.e(TAG, "failure ${error::class.java.simpleName}: ${error.message}", error)
             } finally {

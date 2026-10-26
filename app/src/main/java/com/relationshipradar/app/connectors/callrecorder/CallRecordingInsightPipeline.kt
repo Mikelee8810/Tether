@@ -34,10 +34,38 @@ class CallRecordingInsightPipeline(
 
     suspend fun analyze(recording: CallRecording, personId: Long): CallInsightSession {
         val person = requireNotNull(repository.getPerson(personId)) { "Choose a person for this call" }
-        val model = WhisperModelManager(context).modelFile
-        require(model.isFile) { "Offline transcription model is not installed" }
-        val pcm = withContext(Dispatchers.IO) { AudioPcmDecoder(context).decodeTo16kMono(recording.contentUri) }
-        val transcript = withContext(Dispatchers.Default) { LocalWhisperTranscriber().transcribe(pcm, model) }
+        val modelManager = WhisperModelManager(context)
+        // Gate on the verified status (expected size + hash), not mere file existence, so a
+        // truncated or corrupted download is reported before transcription starts.
+        val status = modelManager.status()
+        require(status.valid) { "Offline transcription model is not installed or failed verification" }
+        val model = modelManager.modelFile
+        val decoder = AudioPcmDecoder(context)
+        val transcriber = LocalWhisperTranscriber()
+        // Decode and transcribe in bounded chunks, stitching the text, so a long call never
+        // sits in memory all at once. The Whisper context is opened once for the whole call.
+        val text = StringBuilder()
+        var durationMillis = 0L
+        withContext(Dispatchers.Default) {
+            val session = transcriber.openSession(model)
+            try {
+                decoder.decodeTo16kMonoChunkFlow(recording.contentUri).collect { chunk ->
+                    durationMillis = chunk.startOffsetMillis + chunk.durationMillis
+                    val chunkText = session.transcribe(chunk)
+                    if (chunkText.isNotBlank()) {
+                        if (text.isNotEmpty()) text.append('\n')
+                        text.append(chunkText)
+                    }
+                }
+            } finally {
+                session.close()
+            }
+        }
+        val transcript = TranscriptResult(
+            text = text.toString(),
+            modelName = model.name,
+            audioDurationMillis = durationMillis,
+        )
         val segments = WhisperTimestampParser.parse(transcript.text).ifEmpty {
             listOf(TranscriptSegment(transcript.text, 0, transcript.audioDurationMillis))
         }

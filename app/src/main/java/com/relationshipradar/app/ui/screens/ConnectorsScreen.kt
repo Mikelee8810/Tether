@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relationshipradar.app.connectors.RadarNotificationListener
+import com.relationshipradar.app.connectors.callrecorder.CALL_RECORDER_PERMISSION
 import com.relationshipradar.app.data.db.ConnectorCursor
 import com.relationshipradar.app.ui.Format
 import com.relationshipradar.app.ui.RadarViewModel
@@ -72,6 +73,7 @@ fun ConnectorsScreen(vm: RadarViewModel, onOpenCallInsights: () -> Unit = {}) {
     var callsGranted by remember { mutableStateOf(vm.hasPermission(Manifest.permission.READ_CALL_LOG)) }
     var smsGranted by remember { mutableStateOf(vm.hasPermission(Manifest.permission.READ_SMS)) }
     var calGranted by remember { mutableStateOf(vm.hasPermission(Manifest.permission.READ_CALENDAR)) }
+    var recorderGranted by remember { mutableStateOf(vm.hasPermission(CALL_RECORDER_PERMISSION)) }
     var listenerOn by remember { mutableStateOf(RadarNotificationListener.isEnabled(ctx)) }
     var msg by remember { mutableStateOf<String?>(null) }
     var isScanning by remember { mutableStateOf(false) }
@@ -87,6 +89,11 @@ fun ConnectorsScreen(vm: RadarViewModel, onOpenCallInsights: () -> Unit = {}) {
     val smsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         smsGranted = ok
         if (ok) vm.scanNow { msg = it }
+    }
+    val recorderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        // Re-check rather than trusting the callback: the permission belongs to another app,
+        // so a denial (or a missing Call Recorder install) must read as "Access required".
+        recorderGranted = ok && vm.hasPermission(CALL_RECORDER_PERMISSION)
     }
 
     fun cursor(id: String) = cursors.firstOrNull { it.connectorId == id }
@@ -187,17 +194,44 @@ fun ConnectorsScreen(vm: RadarViewModel, onOpenCallInsights: () -> Unit = {}) {
             item {
                 Box(
                     modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(22.dp), elevation = 6.dp)
-                        .clickable(onClick = onOpenCallInsights).padding(18.dp),
+                        .then(if (recorderGranted) Modifier.clickable(onClick = onOpenCallInsights) else Modifier)
+                        .padding(18.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(StatusColors.Cobalt.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Call, contentDescription = null, tint = StatusColors.Cobalt)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(StatusColors.Cobalt.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Call, contentDescription = null, tint = StatusColors.Cobalt)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text("Call Recorder insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (recorderGranted) "Ready" else "Access required",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (recorderGranted) StatusColors.Emerald else StatusColors.Amber,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text("Transcribe a recording privately and review what’s worth remembering.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                            }
+                            if (recorderGranted) {
+                                Text("Open", color = StatusColors.Cobalt, fontWeight = FontWeight.Bold)
+                            }
                         }
-                        Column(Modifier.weight(1f)) {
-                            Text("Call Recorder insights", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                            Text("Transcribe a recording privately and review what’s worth remembering.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                        if (!recorderGranted) {
+                            Text(
+                                "Tether needs Call Recorder’s permission to see finished recordings. If Call Recorder is not installed, install it first, then allow access.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF475569),
+                                lineHeight = 18.sp,
+                            )
+                            Button(
+                                onClick = { recorderLauncher.launch(CALL_RECORDER_PERMISSION) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusColors.Cobalt),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Allow access", fontWeight = FontWeight.Bold)
+                            }
                         }
-                        Text("Open", color = StatusColors.Cobalt, fontWeight = FontWeight.Bold)
                     }
                 }
             }

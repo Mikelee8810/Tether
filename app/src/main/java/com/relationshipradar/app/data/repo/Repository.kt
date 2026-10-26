@@ -216,7 +216,9 @@ class Repository(private val db: AppDatabase) {
             type = type,
             decision = CallInsightDecision.DISMISSED,
             text = text,
-            sourceExcerpt = sourceExcerpt,
+            // Data minimization: a dismissed insight keeps only its identity keys and text,
+            // never the transcript excerpt. Accepted insights keep their excerpt as a receipt.
+            sourceExcerpt = "",
             sourceStartMillis = sourceStartMillis,
         ),
     )

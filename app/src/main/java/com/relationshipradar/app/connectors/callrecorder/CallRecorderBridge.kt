@@ -5,6 +5,9 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Signature permission the Call Recorder app requires before it serves recording metadata. */
+const val CALL_RECORDER_PERMISSION = "com.kitsumed.shizucallrecorder.permission.READ_RECORDINGS"
+
 data class CallRecording(
     val id: String,
     val displayName: String,
