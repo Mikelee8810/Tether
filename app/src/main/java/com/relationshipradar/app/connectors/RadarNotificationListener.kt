@@ -34,9 +34,9 @@ class RadarNotificationListener : NotificationListenerService() {
                 ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
             val isGroup = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)
             val selfName = extras.getCharSequence(Notification.EXTRA_SELF_DISPLAY_NAME)?.toString()
-                ?: (extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON, android.app.Person::class.java))?.name?.toString()
+                ?: (messagingPerson(extras))?.name?.toString()
 
-            val raw = extras.getParcelableArray(Notification.EXTRA_MESSAGES, Bundle::class.java) ?: return@launch
+            val raw = messageBundles(extras) ?: return@launch
             val messages = Notification.MessagingStyle.Message.getMessagesFromBundleArray(raw).map { m ->
                 val sender = m.senderPerson
                 val name = sender?.name?.toString()
@@ -73,6 +73,25 @@ class RadarNotificationListener : NotificationListenerService() {
     }
 
     companion object {
+        // The typed Bundle parcelable getters are API 33+; fall back to the legacy
+        // untyped getters (same extras, same values) on API 31–32.
+        private fun messagingPerson(extras: Bundle): android.app.Person? =
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON, android.app.Person::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON) as? android.app.Person
+            }
+
+        private fun messageBundles(extras: Bundle): Array<Bundle>? =
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                extras.getParcelableArray(Notification.EXTRA_MESSAGES, Bundle::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                    ?.filterIsInstance<Bundle>()?.toTypedArray()
+            }
+
         const val CONNECTOR_ID = "notifications"
 
         fun isEnabled(context: Context): Boolean =

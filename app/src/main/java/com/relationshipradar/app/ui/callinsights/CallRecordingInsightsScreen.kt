@@ -1,5 +1,7 @@
 package com.relationshipradar.app.ui.callinsights
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relationshipradar.app.RadarApp
+import com.relationshipradar.app.connectors.callrecorder.CALL_RECORDER_PERMISSION
 import com.relationshipradar.app.connectors.callrecorder.CallInsightSession
 import com.relationshipradar.app.connectors.callrecorder.CallRecordingInsightPipeline
 import com.relationshipradar.app.connectors.callrecorder.RecordingMatch
@@ -43,8 +46,9 @@ import com.relationshipradar.app.ui.RadarViewModel
 import com.relationshipradar.app.ui.liquidGlass
 import com.relationshipradar.app.ui.theme.EditorialSerif
 import com.relationshipradar.app.ui.theme.StatusColors
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 
 @Composable
 fun CallRecordingInsightsScreen(vm: RadarViewModel) {
@@ -57,14 +61,36 @@ fun CallRecordingInsightsScreen(vm: RadarViewModel) {
     var working by remember { mutableStateOf<RecordingMatch?>(null) }
     var session by remember { mutableStateOf<CallInsightSession?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var recorderAccessMissing by remember { mutableStateOf(false) }
 
-    fun refresh() { scope.launch { recordings = runCatching { pipeline.recordings() }.onFailure { error = it.message }.getOrDefault(emptyList()) } }
+    // Friendly, actionable copy only — never surface a raw exception message to the user.
+    fun friendlyError(error: Throwable): String = when (error) {
+        is SecurityException -> {
+            recorderAccessMissing = true
+            "Tether does not have access to Call Recorder. Allow access below, then check again."
+        }
+        is IllegalStateException ->
+            "The offline transcription model is not ready. Install or re-install it above, then try again."
+        else -> "Something went wrong reading Call Recorder. Check again in a moment."
+    }
+
+    fun refresh() {
+        scope.launch {
+            recordings = runCatching { pipeline.recordings() }
+                .onSuccess { recorderAccessMissing = false; error = null }
+                .onFailure { error = friendlyError(it) }
+                .getOrDefault(emptyList())
+        }
+    }
+    val recorderPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) refresh() else recorderAccessMissing = true
+    }
     fun analyze(match: RecordingMatch, personId: Long) {
         working = match; error = null
         scope.launch {
             runCatching { pipeline.analyze(match.recording, personId) }
                 .onSuccess { session = it }
-                .onFailure { error = it.message ?: "Could not analyze this recording" }
+                .onFailure { error = friendlyError(it) }
             working = null
         }
     }
@@ -98,7 +124,14 @@ fun CallRecordingInsightsScreen(vm: RadarViewModel) {
         when (val rows = recordings) {
             null -> item { Text("Checking Call Recorder…", color = Color(0xFF64748B)) }
             else -> if (rows.isEmpty()) item {
-                EmptyRecordingsCard(onRefresh = ::refresh)
+                if (recorderAccessMissing) {
+                    RecorderAccessCard(
+                        onGrant = { recorderPermissionLauncher.launch(CALL_RECORDER_PERMISSION) },
+                        onRefresh = ::refresh,
+                    )
+                } else {
+                    EmptyRecordingsCard(onRefresh = ::refresh)
+                }
             } else items(rows, key = { it.recording.id }) { match ->
                 RecordingCard(match, working?.recording?.id == match.recording.id) {
                     match.person?.let { analyze(match, it.id) } ?: run { choosing = match }
@@ -172,20 +205,20 @@ private fun WhisperModelInstallCard() {
                     val request = manager.install()
                     progress = 0
                     scope.launch {
-                        while (true) {
-                            val info = androidx.work.WorkManager.getInstance(context).getWorkInfoById(request.id).get()
-                            if (info == null) {
-                                delay(350)
-                                continue
+                        // Observe the work as a Flow instead of blocking the main thread
+                        // with a polling .get() loop.
+                        val info = androidx.work.WorkManager.getInstance(context)
+                            .getWorkInfoByIdFlow(request.id)
+                            .onEach { update ->
+                                if (update != null) {
+                                    progress = update.progress.getInt("percent", progress ?: 0)
+                                }
                             }
-                            progress = info.progress.getInt("percent", progress ?: 0)
-                            if (info.state.isFinished) {
-                                progress = null
-                                refresh()
-                                if (!info.state.name.equals("SUCCEEDED")) message = info.outputData.getString("error") ?: "Download failed. Try again."
-                                break
-                            }
-                            delay(350)
+                            .first { it?.state?.isFinished == true }
+                        progress = null
+                        refresh()
+                        if (info != null && !info.state.name.equals("SUCCEEDED")) {
+                            message = info.outputData.getString("error") ?: "Download failed. Try again."
                         }
                     }
                 },
@@ -217,6 +250,18 @@ private fun RecordingCard(match: RecordingMatch, working: Boolean, onAnalyze: ()
         )
         Button(onClick = onAnalyze, enabled = !working, modifier = Modifier.fillMaxWidth()) {
             Text(if (working) "Transcribing on-device…" else if (match.person == null) "Choose person & transcribe" else "Transcribe & find insights")
+        }
+    }
+}
+
+@Composable
+private fun RecorderAccessCard(onGrant: () -> Unit, onRefresh: () -> Unit) {
+    Box(Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(20.dp), elevation = 6.dp).padding(22.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Call Recorder access is off", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text("Tether cannot see finished recordings until Call Recorder grants access. If Call Recorder is not installed, install it first, then allow access.", color = Color(0xFF64748B))
+            Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) { Text("Allow access") }
+            TextButton(onClick = onRefresh) { Text("Check again") }
         }
     }
 }

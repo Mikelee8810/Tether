@@ -1,6 +1,7 @@
 package com.relationshipradar.app.work
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -56,6 +57,8 @@ object Notifications {
         return PendingIntent.getActivity(context, personId?.toInt() ?: 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
+    // Permission is checked via canPost() above; lint cannot see through the helper.
+    @SuppressLint("MissingPermission")
     fun postIndividual(context: Context, radar: PersonRadar) {
         if (!canPost(context)) return
         val days = radar.daysSinceEffort
@@ -80,6 +83,8 @@ object Notifications {
         NotificationManagerCompat.from(context).notify(notifId, n)
     }
 
+    // Permission is checked via canPost() above; lint cannot see through the helper.
+    @SuppressLint("MissingPermission")
     fun postRoundup(context: Context, due: List<PersonRadar>) {
         if (!canPost(context) || due.isEmpty()) return
         val names = due.take(5).joinToString(", ") { it.person.displayName }
@@ -98,6 +103,8 @@ object Notifications {
         NotificationManagerCompat.from(context).notify(ROUNDUP_ID, n)
     }
 
+    // Permission is checked via canPost() above; lint cannot see through the helper.
+    @SuppressLint("MissingPermission")
     fun postCallFollowUp(context: Context, insight: CallInsight, personName: String): Boolean {
         if (!canPost(context)) return false
         val notification = NotificationCompat.Builder(context, CHANNEL_CALL_INSIGHTS)

@@ -34,7 +34,8 @@ class CallInsightReviewStore(private val repository: Repository) {
         candidateId = candidate.id,
         type = candidate.type.name,
         text = candidate.text,
-        sourceExcerpt = candidate.sourceExcerpt,
+        // Dismissed insights do not retain the transcript excerpt (enforced again in Repository).
+        sourceExcerpt = "",
         sourceStartMillis = candidate.sourceStartMillis,
     ) > 0
 }

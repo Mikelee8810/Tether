@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy (pre-API 31) Auto Backup rules: keep the Room database out of backups. -->
+<full-backup-content>
+    <exclude domain="database" path="relationship_radar.db" />
+    <exclude domain="database" path="relationship_radar.db-shm" />
+    <exclude domain="database" path="relationship_radar.db-wal" />
+</full-backup-content>

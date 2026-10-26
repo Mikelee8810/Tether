@@ -8,11 +8,15 @@ import android.media.MediaFormat
 import android.net.Uri
 import java.nio.ByteOrder
 import kotlin.math.floor
+import kotlinx.coroutines.channels.trySendBlocking
+import kotlinx.coroutines.withContext
 
 data class DecodedPcm(
     val samples: ShortArray,
     val sampleRate: Int = TARGET_SAMPLE_RATE,
     val channelCount: Int = 1,
+    /** Offset of the first sample in the full recording; 0 for a whole-recording decode. */
+    val startOffsetMillis: Long = 0,
 ) {
     val durationMillis: Long = samples.size * 1_000L / sampleRate
 
@@ -22,24 +26,72 @@ data class DecodedPcm(
 }
 
 /**
- * Phase-5 prototype decoder. It accepts Call Recorder's provider URI, decodes through Android's
- * platform codecs, downmixes to mono, and resamples to the 16 kHz signed PCM expected by local
- * speech models. The next phase should stream bounded chunks rather than retain a whole call.
+ * Streaming decoder for Call Recorder's provider URIs.
+ *
+ * Audio is decoded through Android's platform codecs, downmixed to mono, and resampled to the
+ * 16 kHz signed PCM expected by local speech models. The chunked entry points emit bounded
+ * [DecodedPcm] windows so peak memory stays flat no matter how long the call is; the caller
+ * consumes (e.g. transcribes) each window before the next one is produced.
  */
 class AudioPcmDecoder(private val context: Context) {
+    /** Whole-recording decode. Retained for short fixtures/probes; production code uses chunks. */
     fun decodeTo16kMono(uri: Uri): DecodedPcm {
+        val chunks = ArrayList<DecodedPcm>()
+        decodeTo16kMonoChunks(uri, chunkSamples = Int.MAX_VALUE) { chunks += it }
+        return chunks.firstOrNull() ?: DecodedPcm(ShortArray(0))
+    }
+
+    /**
+     * Decodes [uri] in bounded chunks of at most [chunkSamples] 16 kHz mono samples, invoking
+     * [onChunk] for each one in order. Returns the total decoded duration in milliseconds.
+     */
+    fun decodeTo16kMonoChunks(
+        uri: Uri,
+        chunkSamples: Int = DEFAULT_CHUNK_SAMPLES,
+        onChunk: (DecodedPcm) -> Unit,
+    ): Long {
         val descriptor = context.contentResolver.openAssetFileDescriptor(uri, "r")
             ?: error("Unable to open recording")
         return descriptor.use {
-            decode(it.fileDescriptor, it.startOffset, it.length)
+            decodeChunks(it.fileDescriptor, it.startOffset, it.length, chunkSamples, onChunk)
         }
     }
 
+    /**
+     * The chunked decode as a cold flow: decoding runs on the IO dispatcher and each bounded
+     * chunk is delivered with backpressure, so a slow consumer (transcription) never lets
+     * decoded audio pile up in memory.
+     */
+    fun decodeTo16kMonoChunkFlow(
+        uri: Uri,
+        chunkSamples: Int = DEFAULT_CHUNK_SAMPLES,
+    ): kotlinx.coroutines.flow.Flow<DecodedPcm> = kotlinx.coroutines.flow.channelFlow {
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            decodeTo16kMonoChunks(uri, chunkSamples) { chunk ->
+                trySendBlocking(chunk).getOrThrow()
+            }
+        }
+    }
+
+    /** Whole-recording decode from a raw descriptor. Retained for short fixtures/probes. */
     fun decode(
         fileDescriptor: java.io.FileDescriptor,
         startOffset: Long,
         length: Long,
     ): DecodedPcm {
+        val chunks = ArrayList<DecodedPcm>()
+        decodeChunks(fileDescriptor, startOffset, length, Int.MAX_VALUE) { chunks += it }
+        return chunks.firstOrNull() ?: DecodedPcm(ShortArray(0))
+    }
+
+    fun decodeChunks(
+        fileDescriptor: java.io.FileDescriptor,
+        startOffset: Long,
+        length: Long,
+        chunkSamples: Int = DEFAULT_CHUNK_SAMPLES,
+        onChunk: (DecodedPcm) -> Unit,
+    ): Long {
+        require(chunkSamples > 0) { "chunkSamples must be positive" }
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -58,7 +110,8 @@ class AudioPcmDecoder(private val context: Context) {
                 start()
             }
 
-            val interleaved = ArrayList<Short>()
+            val sink = ChunkSink(chunkSamples, onChunk)
+            var resampler: StreamingResampler? = null
             val bufferInfo = MediaCodec.BufferInfo()
             var inputEnded = false
             var outputEnded = false
@@ -98,15 +151,13 @@ class AudioPcmDecoder(private val context: Context) {
                             buffer.order(ByteOrder.nativeOrder())
                             buffer.position(bufferInfo.offset)
                             buffer.limit(bufferInfo.offset + bufferInfo.size)
-                            when (pcmEncoding) {
-                                AudioFormat.ENCODING_PCM_FLOAT -> while (buffer.remaining() >= Float.SIZE_BYTES) {
-                                    val normalized = buffer.float.coerceIn(-1f, 1f)
-                                    interleaved += (normalized * Short.MAX_VALUE).toInt().toShort()
-                                }
-                                else -> while (buffer.remaining() >= Short.SIZE_BYTES) {
-                                    interleaved += buffer.short
-                                }
-                            }
+                            val interleaved = readInterleaved(buffer, pcmEncoding)
+                            val mono = downmix(interleaved, channelCount)
+                            val stream = resampler ?: StreamingResampler(
+                                sampleRate,
+                                DecodedPcm.TARGET_SAMPLE_RATE,
+                            ).also { resampler = it }
+                            sink.add(stream.append(mono))
                         }
                         outputEnded = bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                         codec.releaseOutputBuffer(outputIndex, false)
@@ -114,8 +165,8 @@ class AudioPcmDecoder(private val context: Context) {
                 }
             }
 
-            val mono = downmix(interleaved, channelCount)
-            return DecodedPcm(resample(mono, sampleRate, DecodedPcm.TARGET_SAMPLE_RATE))
+            resampler?.let { sink.add(it.flush()) }
+            return sink.finish()
         } finally {
             try {
                 codec?.stop()
@@ -126,8 +177,22 @@ class AudioPcmDecoder(private val context: Context) {
         }
     }
 
-    private fun downmix(samples: List<Short>, channels: Int): ShortArray {
-        if (channels <= 1) return samples.toShortArray()
+    private fun readInterleaved(buffer: java.nio.ByteBuffer, pcmEncoding: Int): ShortArray =
+        when (pcmEncoding) {
+            AudioFormat.ENCODING_PCM_FLOAT -> {
+                val count = buffer.remaining() / Float.SIZE_BYTES
+                ShortArray(count) {
+                    (buffer.float.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
+                }
+            }
+            else -> {
+                val count = buffer.remaining() / Short.SIZE_BYTES
+                ShortArray(count) { buffer.short }
+            }
+        }
+
+    private fun downmix(samples: ShortArray, channels: Int): ShortArray {
+        if (channels <= 1) return samples
         val frames = samples.size / channels
         return ShortArray(frames) { frame ->
             var sum = 0L
@@ -136,26 +201,133 @@ class AudioPcmDecoder(private val context: Context) {
         }
     }
 
-    private fun resample(source: ShortArray, sourceRate: Int, targetRate: Int): ShortArray {
-        if (source.isEmpty() || sourceRate == targetRate) return source
-        val targetSize = (source.size.toLong() * targetRate / sourceRate).toInt().coerceAtLeast(1)
-        val ratio = sourceRate.toDouble() / targetRate.toDouble()
-        return ShortArray(targetSize) { outputIndex ->
-            val sourcePosition = outputIndex * ratio
-            val lower = floor(sourcePosition).toInt().coerceIn(0, source.lastIndex)
-            val upper = (lower + 1).coerceAtMost(source.lastIndex)
-            val fraction = sourcePosition - lower
-            (source[lower] + (source[upper] - source[lower]) * fraction)
-                .toInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                .toShort()
-        }
-    }
-
     private fun MediaFormat.getIntegerOrDefault(key: String, default: Int): Int =
         if (containsKey(key)) getInteger(key) else default
 
-    private companion object {
+    /** Accumulates resampled samples and emits fixed-size [DecodedPcm] windows. */
+    private class ChunkSink(
+        private val chunkSamples: Int,
+        private val onChunk: (DecodedPcm) -> Unit,
+    ) {
+        private var buffer = ShortArray(minOf(chunkSamples, INITIAL_BUFFER_SAMPLES))
+        private var count = 0
+        private var emittedSamples = 0L
+        private var totalSamples = 0L
+
+        fun add(samples: ShortArray) {
+            var offset = 0
+            while (offset < samples.size) {
+                val room = chunkSamples - count
+                val take = minOf(room, samples.size - offset)
+                ensureCapacity(count + take)
+                samples.copyInto(buffer, count, offset, offset + take)
+                count += take
+                totalSamples += take
+                offset += take
+                if (count == chunkSamples) emit()
+            }
+        }
+
+        /** Emits any trailing partial chunk and returns the total duration in milliseconds. */
+        fun finish(): Long {
+            if (count > 0) emit()
+            return totalSamples * 1_000L / DecodedPcm.TARGET_SAMPLE_RATE
+        }
+
+        private fun emit() {
+            val chunk = buffer.copyOf(count)
+            onChunk(
+                DecodedPcm(
+                    samples = chunk,
+                    startOffsetMillis = emittedSamples * 1_000L / DecodedPcm.TARGET_SAMPLE_RATE,
+                ),
+            )
+            emittedSamples += count
+            count = 0
+        }
+
+        private fun ensureCapacity(needed: Int) {
+            if (needed <= buffer.size) return
+            var size = buffer.size
+            while (size < needed && size < chunkSamples) size = minOf(chunkSamples, size * 2)
+            buffer = buffer.copyOf(size)
+        }
+
+        private companion object {
+            const val INITIAL_BUFFER_SAMPLES = 16_000
+        }
+    }
+
+    /**
+     * Linear-interpolation resampler that carries its state across buffers, so chunk
+     * boundaries never restart the sample phase. Holds at most one codec buffer of
+     * not-yet-consumed source samples plus the current output window.
+     */
+    private class StreamingResampler(
+        private val sourceRate: Int,
+        private val targetRate: Int,
+    ) {
+        private val ratio = if (targetRate == sourceRate) 1.0 else sourceRate.toDouble() / targetRate.toDouble()
+        private val pending = ArrayDeque<Short>()
+        private var pendingBaseIndex = 0L
+        private var totalSourceSamples = 0L
+        private var nextOutputIndex = 0L
+
+        fun append(mono: ShortArray): ShortArray {
+            if (ratio == 1.0) return mono
+            mono.forEach { pending.addLast(it) }
+            totalSourceSamples += mono.size
+            // An output sample is final once both interpolation neighbours have arrived.
+            return drain(availableOutputs(final = false))
+        }
+
+        fun flush(): ShortArray {
+            if (ratio == 1.0) return ShortArray(0)
+            return drain(availableOutputs(final = true)).also { pending.clear() }
+        }
+
+        private fun availableOutputs(final: Boolean): Int {
+            val totalOutputs = (totalSourceSamples * targetRate.toDouble() / sourceRate).toInt()
+            var count = totalOutputs - nextOutputIndex.toInt()
+            if (!final && count > 0) {
+                // Hold back outputs whose upper neighbour has not been decoded yet.
+                val lastSafeOutput = ((totalSourceSamples - 1) / ratio).toInt()
+                count = minOf(count, (lastSafeOutput - nextOutputIndex + 1).toInt().coerceAtLeast(0))
+            }
+            return count.coerceAtLeast(0)
+        }
+
+        private fun drain(count: Int): ShortArray {
+            if (count == 0) return ShortArray(0)
+            val out = ShortArray(count) { i ->
+                val outputIndex = nextOutputIndex + i
+                val sourcePosition = outputIndex * ratio
+                val lowerIndex = floor(sourcePosition).toLong()
+                val fraction = sourcePosition - lowerIndex
+                val lower = sampleAt(lowerIndex)
+                val upper = sampleAt(minOf(lowerIndex + 1, totalSourceSamples - 1))
+                (lower + (upper - lower) * fraction)
+                    .toInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    .toShort()
+            }
+            nextOutputIndex += count
+            // Drop source samples no future output can reference, keeping the boundary sample.
+            val keepFrom = floor(nextOutputIndex * ratio).toLong()
+            while (pendingBaseIndex < keepFrom && pending.size > 1) {
+                pending.removeFirst()
+                pendingBaseIndex++
+            }
+            return out
+        }
+
+        private fun sampleAt(sourceIndex: Long): Short =
+            pending[(sourceIndex - pendingBaseIndex).toInt()]
+    }
+
+    companion object {
+        /** 20 seconds of 16 kHz mono audio per chunk: big enough for Whisper, small in memory. */
+        const val DEFAULT_CHUNK_SAMPLES = DecodedPcm.TARGET_SAMPLE_RATE * 20
         const val TIMEOUT_US = 10_000L
     }
 }
