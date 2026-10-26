@@ -36,14 +36,15 @@ class LocalWhisperTranscriber {
      * bounded by the chunk size instead of the whole call. Timestamped output is shifted by
      * the chunk's offset so stitched text keeps recording-relative timestamps.
      */
-    class Session internal constructor(private val context: WhisperContext) : AutoCloseable {
+    class Session internal constructor(private val context: WhisperContext) {
         suspend fun transcribe(pcm: DecodedPcm): String {
             val floatSamples = FloatArray(pcm.samples.size) { index -> pcm.samples[index] / 32768f }
             val raw = context.transcribeData(floatSamples, printTimestamp = true).trim()
             return shiftTimestamps(raw, pcm.startOffsetMillis)
         }
 
-        override fun close() = context.release()
+        /** The binding's release is itself a suspend function, so closing is suspend too. */
+        suspend fun close() = context.release()
 
         private fun shiftTimestamps(text: String, offsetMillis: Long): String {
             if (offsetMillis == 0L) return text
